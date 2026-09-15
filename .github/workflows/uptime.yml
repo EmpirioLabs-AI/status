@@ -33,6 +33,14 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT || github.token }}
         continue-on-error: true
+      # Must run with github.token, not GH_PAT. GH_PAT can open an issue but
+      # cannot label or assign it, so Upptime loses track of its own incidents
+      # and never closes them. See scripts/reconcile-incidents.mjs.
+      - name: Reconcile incident issues
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/reconcile-incidents.mjs
       - name: Record site snapshots
         if: always()
         run: node scripts/record-sites.mjs
@@ -56,7 +64,16 @@ jobs:
               exit 0
             fi
             echo "Push failed, rebasing and retrying..."
-            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            # A rebase that stops on a conflict leaves HEAD detached at the
+            # upstream tip, where the next push prints "Everything up-to-date"
+            # and exits 0 with this run's snapshot commit silently dropped.
+            # Observed on 2026-09-15: the step reported "Pushed on attempt 2"
+            # having published nothing. Fail loudly instead of swallowing it.
+            if ! git pull --rebase origin "${GITHUB_REF_NAME}"; then
+              git rebase --abort 2>/dev/null || true
+              echo "Could not rebase onto the remote; this sample is unrecorded."
+              exit 1
+            fi
           done
           echo "Push failed after retries"
           exit 1

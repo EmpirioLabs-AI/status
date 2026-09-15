@@ -1,0 +1,40 @@
+name: Incident Reconcile CI
+# Keeps Upptime's auto-opened incidents labelled, assigned and closed.
+#
+# This runs on its own schedule rather than only as a step inside Uptime CI,
+# because Uptime CI is frequently cancelled: its concurrency group keeps at
+# most one pending run, so when a check cycle runs long every queued run in
+# between is dropped (29 of 39 runs on 2026-09-15). Incident hygiene and the
+# notification that depends on it should not inherit that failure rate.
+on:
+  schedule:
+    - cron: "*/15 * * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: incident-reconcile
+  cancel-in-progress: false
+
+jobs:
+  reconcile:
+    name: Reconcile incident issues
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: read
+      issues: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 1
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm install --no-audit --no-fund
+      # github.token deliberately, not GH_PAT: the PAT can open an issue but
+      # cannot set labels or assignees on it, which is the whole bug.
+      - name: Reconcile
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node scripts/reconcile-incidents.mjs

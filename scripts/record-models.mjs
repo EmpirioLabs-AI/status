@@ -259,29 +259,27 @@ function recordSample(state, data, nowUnix) {
   return seen.size;
 }
 
-function recordEndpointFailure(state, nowUnix) {
-  const day = utcDay(nowUnix);
-  const workers = Object.entries(state.workers || {});
-
-  for (const [, entry] of workers) {
-    entry.last_seen = nowUnix;
-    if (!entry.buckets[day]) {
-      entry.buckets[day] = {
-        checks: 0,
-        ok: 0,
-        suspended: 0,
-        down: 0,
-        lat_sum: 0,
-        lat_count: 0,
-      };
-    }
-    entry.buckets[day].checks += 1;
-    entry.buckets[day].down += 1;
-    trimBuckets(entry, nowUnix);
-  }
-
-  state.updated_at = nowUnix;
-  return workers.length;
+// An unreachable /health endpoint records NOTHING per model.
+//
+// This function used to add one `down` sample to every worker's bucket. That
+// asserts something the recorder cannot actually observe: it cannot tell "the
+// gateway is down" apart from "this runner cannot reach the gateway". On
+// 2026-09-15 the second case happened (the API host answered 200 everywhere
+// except GitHub's runners) and the recorder wrote 2184 false down samples
+// across all 182 models in a few hours, showing 12.2% fabricated downtime on
+// every 90-day bar against 0 on every prior day of the month.
+//
+// A failed inventory read is not zero stock. The honest signal for "/health
+// itself is unreachable" is the `models` site row, which Upptime already
+// checks against the same endpoint and which reports it without claiming
+// anything about any individual model. A per-model `down` is only truthful
+// when /health answered and named that worker down.
+//
+// `updated_at` is deliberately left alone so a run of pure failures leaves the
+// state file byte-identical, which keeps the workflow from committing and
+// racing a push for a sample that carries no information.
+function noteEndpointUnreachable(state) {
+  return Object.keys(state.workers || {}).length;
 }
 
 function sleep(ms) {
@@ -328,12 +326,11 @@ async function main() {
       data = await fetchHealthWithRetries(`${i + 1}/${SAMPLES_PER_RUN}`);
     } catch (err) {
       const failedAt = Math.floor(Date.now() / 1000);
-      const recorded = recordEndpointFailure(state, failedAt);
-      totalSamples += 1;
-      lastSampleUnix = failedAt;
-      lastWorkerCount = recorded;
+      const untouched = noteEndpointUnreachable(state);
+      lastSampleUnix = lastSampleUnix || failedAt;
+      lastWorkerCount = untouched;
       console.error(
-        `[record-models] sample ${i + 1}/${SAMPLES_PER_RUN}: health endpoint unavailable after ${FETCH_RETRIES} attempts; recorded ${recorded} workers down (${errorMessage(err)})`
+        `[record-models] sample ${i + 1}/${SAMPLES_PER_RUN}: health endpoint unavailable after ${FETCH_RETRIES} attempts; recorded no sample for ${untouched} workers (${errorMessage(err)})`
       );
       if (i < SAMPLES_PER_RUN - 1) await sleep(SAMPLE_INTERVAL_SECONDS * 1000);
       continue;
@@ -354,12 +351,10 @@ async function main() {
   }
 
   if (totalSamples === 0) {
-    const failedAt = Math.floor(Date.now() / 1000);
-    lastWorkerCount = recordEndpointFailure(state, failedAt);
-    lastSampleUnix = failedAt;
-    totalSamples = 1;
+    lastSampleUnix = lastSampleUnix || Math.floor(Date.now() / 1000);
+    lastWorkerCount = noteEndpointUnreachable(state);
     console.error(
-      `[record-models] no health samples succeeded; recorded ${lastWorkerCount} workers down`
+      `[record-models] no health samples succeeded; history left unchanged for ${lastWorkerCount} workers`
     );
   }
 
