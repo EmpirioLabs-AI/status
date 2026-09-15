@@ -826,7 +826,14 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   }
   .sub-pop .hint { color: #6b7790; font-size: 0.78rem; margin-top: 8px; }
 
+  /* Icon in its own column, title and body sharing the next one, so the body
+     hangs under the title instead of under the icon. It used to be a sibling
+     of the icon+title row, which left it 34px to the left of its own heading
+     at every viewport width. */
   .banner {
+    display: flex;
+    align-items: flex-start;
+    gap: 12px;
     border: 1px solid #14233f;
     border-radius: 12px;
     padding: 18px 20px;
@@ -837,11 +844,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .banner-degraded { background: linear-gradient(180deg, rgba(255,181,71,0.10), rgba(255,181,71,0.04)); border-color: rgba(255,181,71,0.35); }
   .banner-down { background: linear-gradient(180deg, rgba(255,77,106,0.12), rgba(255,77,106,0.05)); border-color: rgba(255,77,106,0.4); }
   .banner-unknown { background: #060f22; }
-  .banner-row {
-    display: flex; align-items: center; gap: 12px;
-    font-weight: 600; font-size: 1.05rem;
-  }
   .banner-icon {
+    flex: none;
     width: 22px; height: 22px; border-radius: 50%;
     display: inline-flex; align-items: center; justify-content: center;
     font-size: 0.8rem; color: #000815;
@@ -850,7 +854,10 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .banner-degraded .banner-icon { background: #ffb547; }
   .banner-down .banner-icon { background: #ff4d6a; color: #fff; }
   .banner-unknown .banner-icon { background: #4a5568; color: #fff; }
-  .banner-body { margin-top: 6px; color: #a8b3c7; font-size: 0.9rem; }
+  /* 22px matches the icon box exactly, so flex-start centres the icon on the
+     title's line without a nudge that would drift if either size changed. */
+  .banner-title { margin: 0; font-weight: 600; font-size: 1.05rem; line-height: 22px; }
+  .banner-body { margin: 6px 0 0; color: #a8b3c7; font-size: 0.9rem; }
 
   .card {
     border: 1px solid #14233f;
@@ -1327,11 +1334,11 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   </header>
 
   <section class="banner ${banner.cls}">
-    <div class="banner-row">
-      <span class="banner-icon">${banner.icon}</span>
-      <span>${escapeHtml(banner.title)}</span>
+    <span class="banner-icon" aria-hidden="true">${banner.icon}</span>
+    <div class="banner-text">
+      <p class="banner-title">${escapeHtml(banner.title)}</p>
+      <p class="banner-body">${escapeHtml(banner.body)}</p>
     </div>
-    <div class="banner-body">${escapeHtml(banner.body)}</div>
   </section>
 
   <section class="card">
