@@ -1,0 +1,54 @@
+{
+  "generatedAt": "2026-09-26T19:38:26.608Z",
+  "overall": "up",
+  "sites": [
+    {
+      "name": "Website",
+      "slug": "website",
+      "url": "https://empiriolabs.ai",
+      "status": "up",
+      "uptimePercent": 99.95079298989363,
+      "lastUpdated": "2026-09-26T19:36:33.000Z"
+    },
+    {
+      "name": "Documentation",
+      "slug": "documentation",
+      "url": "https://docs.empiriolabs.ai",
+      "status": "up",
+      "uptimePercent": 99.99242854438765,
+      "lastUpdated": "2026-09-26T19:36:33.000Z"
+    },
+    {
+      "name": "API Gateway",
+      "slug": "api",
+      "url": "https://api.empiriolabs.ai/livez",
+      "status": "up",
+      "uptimePercent": 99.91294144365797,
+      "lastUpdated": "2026-09-26T19:36:33.000Z"
+    },
+    {
+      "name": "Models",
+      "slug": "models",
+      "url": "https://api.empiriolabs.ai/health",
+      "status": "up",
+      "uptimePercent": 99.89780856137163,
+      "lastUpdated": "2026-09-26T19:36:33.000Z"
+    },
+    {
+      "name": "GPU Cloud",
+      "slug": "gpu-cloud",
+      "url": "https://api.empiriolabs.ai/v1/gpu/catalog",
+      "status": "up",
+      "uptimePercent": 99.92052378609544,
+      "lastUpdated": "2026-09-26T19:36:33.000Z"
+    },
+    {
+      "name": "Hosted Agents",
+      "slug": "agents",
+      "url": "https://api.empiriolabs.ai/v1/hosted-agents/health",
+      "status": "up",
+      "uptimePercent": 99.90538545963744,
+      "lastUpdated": "2026-09-26T19:36:33.000Z"
+    }
+  ]
+}
