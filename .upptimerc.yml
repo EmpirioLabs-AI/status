@@ -57,7 +57,7 @@ sites:
 
   - name: Media Delivery
     url: https://media.empiriolabs.ai/assets/empirio-og-logo.png
-    slug: media
+    slug: media-delivery
     expectedStatusCodes: [200]
     icon: https://empiriolabs.ai/images/favicon.png
 
