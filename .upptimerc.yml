@@ -7,40 +7,66 @@ sites:
   - name: Website
     url: https://empiriolabs.ai
     expectedStatusCodes: [200, 301, 302, 308]
-    icon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+    icon: https://empiriolabs.ai/images/favicon.png
 
   - name: Documentation
     url: https://docs.empiriolabs.ai
     expectedStatusCodes: [200, 301, 302, 308]
-    icon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+    icon: https://empiriolabs.ai/images/favicon.png
 
   - name: API Gateway
     url: https://api.empiriolabs.ai/livez
     slug: api
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"status":"ok"'
-    icon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+    icon: https://empiriolabs.ai/images/favicon.png
 
   - name: Models
     url: https://api.empiriolabs.ai/health
     slug: models
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"service":"gateway"'
-    icon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+    icon: https://empiriolabs.ai/images/favicon.png
 
   - name: GPU Cloud
     url: https://api.empiriolabs.ai/v1/gpu/catalog
     slug: gpu-cloud
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"object":"list"'
-    icon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+    icon: https://empiriolabs.ai/images/favicon.png
 
   - name: Hosted Agents
     url: https://api.empiriolabs.ai/v1/hosted-agents/health
     slug: agents
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"service":"hosted-agents"'
-    icon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+    icon: https://empiriolabs.ai/images/favicon.png
+
+  - name: Dashboard
+    url: https://platform.empiriolabs.ai/auth/login
+    slug: dashboard
+    expectedStatusCodes: [200]
+    icon: https://empiriolabs.ai/images/favicon.png
+
+  - name: MCP Server
+    url: https://mcp.empiriolabs.ai/livez
+    slug: mcp
+    expectedStatusCodes: [200]
+    __dangerous__body_down_if_text_missing: '"status":"ok"'
+    icon: https://empiriolabs.ai/images/favicon.png
+
+  - name: Model Catalog
+    url: https://catalog.empiriolabs.ai/health
+    slug: catalog
+    expectedStatusCodes: [200]
+    __dangerous__body_down_if_text_missing: '"status":"ok"'
+    icon: https://empiriolabs.ai/images/favicon.png
+
+  - name: Media Delivery
+    url: https://media.empiriolabs.ai/assets/empirio-og-logo.png
+    slug: media
+    expectedStatusCodes: [200]
+    icon: https://empiriolabs.ai/images/favicon.png
 
 status-website:
   cname: status.empiriolabs.ai
@@ -51,8 +77,8 @@ status-website:
     Real-time operational status of EmpirioLabs AI services. If you're
     experiencing an issue not reflected here, please reach out to
     [support@empiriolabs.ai](mailto:support@empiriolabs.ai).
-  logoUrl: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69b02b1b963b4d73af041e88_site-logo.webp
-  favicon: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc254049b250db00ca9e9_32x32.png
+  logoUrl: https://empiriolabs.ai/images/site-logo.webp
+  favicon: https://empiriolabs.ai/images/favicon.png
   themeUrl: https://raw.githubusercontent.com/EmpirioLabs-AI/status/main/assets/empirio.css
   metaTags:
     - name: "color-scheme"
@@ -67,7 +93,7 @@ status-website:
     - rel: stylesheet
       href: https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap
     - rel: apple-touch-icon
-      href: https://cdn.prod.website-files.com/69ab23187be9f707e474231f/69cfc25f14bac66bde01da4d_256x256.png
+      href: https://empiriolabs.ai/images/favicon-192.png
 
 i18n:
   footer: "© EmpirioLabs AI"
