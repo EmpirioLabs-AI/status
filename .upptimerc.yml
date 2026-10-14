@@ -55,13 +55,6 @@ sites:
     __dangerous__body_down_if_text_missing: '"status":"ok"'
     icon: https://empiriolabs.ai/images/favicon.png
 
-  - name: Model Catalog
-    url: https://catalog.empiriolabs.ai/health
-    slug: catalog
-    expectedStatusCodes: [200]
-    __dangerous__body_down_if_text_missing: '"status":"ok"'
-    icon: https://empiriolabs.ai/images/favicon.png
-
   - name: Media Delivery
     url: https://media.empiriolabs.ai/assets/empirio-og-logo.png
     slug: media
