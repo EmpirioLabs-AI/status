@@ -530,6 +530,16 @@ function overallStatus(sites) {
   return "unknown";
 }
 
+// A card shows its start and end to the minute, so its duration is the
+// difference of those minutes: "8:34 to 8:42" reads 8 min, never 7.
+function incidentDuration(createdAt, closedAt) {
+  const start = Math.floor(new Date(createdAt).getTime() / 60000);
+  const end = Math.floor(new Date(closedAt).getTime() / 60000);
+  if (!Number.isFinite(start) || !Number.isFinite(end) || end < start) return "ongoing";
+  if (end === start) return "under 1 min";
+  return fmtDuration((end - start) * 60000);
+}
+
 function fmtDuration(ms) {
   if (!ms || ms < 0) return "ongoing";
   const m = Math.floor(ms / 60000);
@@ -572,7 +582,7 @@ function renderIncidentsSection(incidents) {
       const open = i.state === "OPEN";
       const dur = open
         ? "ongoing"
-        : fmtDuration(new Date(i.closedAt) - new Date(i.createdAt));
+        : incidentDuration(i.createdAt, i.closedAt);
       const cls = open ? "incident-open" : "incident-resolved";
       const label = open ? "Investigating" : "Resolved";
       const summary = i.summary
