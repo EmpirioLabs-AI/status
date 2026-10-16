@@ -22,8 +22,13 @@ jobs:
       - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GH_PAT || github.token }}
-          # The run reads only current files. The full history took about
-          # 110 of each run's 134 seconds; that time now goes to sampling.
+          # The tip of main when the job starts, not the commit the run was
+          # dispatched at: the previous run may have pushed its snapshot
+          # since, and starting from older state files makes this run's
+          # push conflict, and every rerun of it. The run reads only current
+          # files. The full history took about 110 of each run's 134
+          # seconds; that time now goes to sampling.
+          ref: main
           fetch-depth: 1
       - uses: actions/setup-node@v5
         with:
