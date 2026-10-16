@@ -169,18 +169,12 @@ async function fetchHealthWithRetries(sampleLabel) {
 // Expand a worker entry from the gateway's /health response into one
 // or more (key, alias-list) pairs for the status page.
 //
-// Today the only real "one Railway service hosts multiple distinct
-// models" case is inworld-tts (serves both tts-1-5-mini and tts-1-5-max).
-// runpod_media_proxy shares CODE across multiple Railway services but
-// each has its own service URL, so the gateway already lists them as
-// separate workers — no fan-out needed.
+// One worker can host more than one model.
 //
 // Strategy: only fan out when the worker reports >1 model_slug. For
 // the single-model case, keep the existing worker-keyed entry so its
 // 90-day uptime history is preserved across deploys, even when the
-// Railway service name and the canonical model slug differ slightly
-// (e.g. ace-step-1-5-xl Railway service vs. ace-step-1.5-xl catalog
-// slug — both refer to the same single model).
+// worker key and the public model id differ.
 //
 // Falls back to a single entry keyed by the worker name when
 // model_slugs is missing/empty (older gateway response, network blip),

@@ -107,6 +107,22 @@ function incidentTimeline(body, maxItems = 5) {
 // Fetch incidents (GitHub issues with the "status" label) at build time.
 // Public repo, so no auth needed; if `gh` is available we use it, otherwise
 // fall back to plain HTTPS. Returns newest first.
+// Two listed incidents with the same title read as one incident shown twice
+// (2026-10-16), so each repeated title gets its start time.
+function distinctTitles(incidents) {
+  const count = new Map();
+  for (const i of incidents) count.set(i.title, (count.get(i.title) || 0) + 1);
+  const when = new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/Los_Angeles", month: "short", day: "numeric",
+    hour: "numeric", minute: "2-digit", timeZoneName: "short",
+  });
+  return incidents.map((i) => {
+    const start = new Date(i.createdAt);
+    if (count.get(i.title) < 2 || Number.isNaN(start.getTime())) return i;
+    return { ...i, title: `${i.title} (${when.format(start)})` };
+  });
+}
+
 function loadIncidents(owner, repo, label = "status", limit = 25) {
   try {
     const json = execSync(
@@ -114,7 +130,7 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
       { encoding: "utf8", stdio: ["pipe", "pipe", "ignore"] }
     );
     const arr = JSON.parse(json);
-    return arr
+    return distinctTitles(arr
       .map((i) => {
         const body = i.body || "";
         const meta = parseIncidentMetadata(body);
@@ -148,7 +164,7 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
           (!Number.isNaN(closed) && closed >= cutoff)
         );
       })
-      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   } catch {
     return [];
   }
@@ -344,17 +360,19 @@ function mergeSiteBuckets(legacyBuckets, stateBuckets) {
           )
         : 0;
 
+    const ok = (legacy.ok || 0) + (state.ok || 0);
+    const down = (legacy.down || 0) + (state.down || 0);
     return {
       date: state.date,
-      status:
-        statusPriority(state.status) >= statusPriority(legacy.status)
-          ? state.status
-          : legacy.status,
+      // Judged from all of the day's samples, as a recorder-only day is: every
+      // sample failed is an outage, some failed a partial outage. One failed
+      // Upptime point used to turn a day of passing samples red.
+      status: down === 0 ? "up" : ok === 0 ? "down" : "degraded",
       checks: (legacy.checks || 0) + (state.checks || 0),
       avgResponseTime,
       latencySamples: totalLatencySamples,
-      ok: (legacy.ok || 0) + (state.ok || 0),
-      down: (legacy.down || 0) + (state.down || 0),
+      ok,
+      down,
     };
   });
 }
@@ -664,10 +682,9 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
   const modelsTilesHtml = sortedWorkerKeys
     .map((key) => {
       const w = recordedWorkers[key];
-      // Display the canonical customer model slug, not the raw worker key --
-      // the key can be the Railway service name (e.g. gemma-4-26b-a4b-native)
-      // which differs from the public slug (gemma-4-26b-a4b). data-worker
-      // stays the key so 90-day history + live JS matching are unchanged.
+      // Display the public model id, not the raw worker key, which can differ
+      // from it. data-worker stays the key so 90-day history + live JS
+      // matching are unchanged.
       const displayName =
         w && Array.isArray(w.models) && w.models.length ? w.models[0] : key;
       const buckets = modelBuckets(w, HISTORY_DAYS);
@@ -1480,10 +1497,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       if(lastChecked && updated) updated.textContent = 'Updated ' + ageText(lastChecked);
     }
 
-    // Map gateway status → visible status. Suspended/dormant replicas are a
-    // platform implementation detail (Fly scale-to-zero) and aren't an
-    // availability problem from the API consumer's perspective, so they
-    // collapse into 'ok'. On always-on platforms this branch never fires.
+    // Map gateway status to visible status. A suspended model is not an
+    // availability problem for the API consumer, so it collapses into 'ok'.
     function visibleStatus(raw){
       if(raw === 'down') return 'down';
       return 'ok';
@@ -1664,9 +1679,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       // distinction to viewers (it's a platform detail, not an availability
       // signal). Future always-on platforms will return suspended=0 anyway.
       // Prefer models_* counts when present so 'X operational of Y total'
-      // counts logical models (one per row), not Railway services. For
-      // workers that host >1 model (inworld-tts -> tts-1-5-mini +
-      // tts-1-5-max) the page renders one row per model, and the
+      // counts models (one per row), not workers: a worker can host more
+      // than one model, the page renders one row per model, and the
       // counter has to match the row count. Falls back to workers_*
       // when an older gateway doesn't emit models_* fields.
       var up = data.models_up != null

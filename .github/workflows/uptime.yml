@@ -41,9 +41,8 @@ jobs:
         env:
           GH_PAT: ${{ secrets.GH_PAT || github.token }}
         continue-on-error: true
-      # Must run with github.token, not GH_PAT. GH_PAT can open an issue but
-      # cannot label or assign it, so Upptime loses track of its own incidents
-      # and never closes them. See scripts/reconcile-incidents.mjs.
+      # Runs with github.token so the labels and assignees it sets stick.
+      # See scripts/reconcile-incidents.mjs.
       - name: Reconcile incident issues
         if: always()
         env:

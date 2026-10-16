@@ -9,29 +9,24 @@
 //
 //   update.ts: octokit.issues.listForRepo({ labels: slug, state: "open" })
 //
-// and it passes `labels: ["status", slug]` when it creates the issue. In this
-// repo that label never lands: every auto-opened issue since #1 (2026-05-03)
-// has `labels: []` and `assignees: []`, because `GH_PAT` can create an issue
-// but cannot set labels or assignees on it (GitHub silently drops both for a
-// token without repository write access). Two consequences, both observed:
+// and it passes `labels: ["status", slug]` when it creates the issue. Here
+// those labels and assignees do not always land. Without the slug label:
 //
 //   1. The lookup returns nothing, so every down check opens ANOTHER duplicate
 //      instead of reusing the open one.
 //   2. The lookup returns nothing on recovery too, so the "site came back up"
-//      branch never runs and the incident stays open forever. #46 sat open
-//      from 2026-08-25 while history/website.yml read `status: up`.
+//      branch never runs and the incident stays open.
 //
-// This script runs with the workflow's own GITHUB_TOKEN, which does have write
-// access, so the labels and assignees it applies actually stick. Once an open
+// This script runs with the workflow's own GITHUB_TOKEN, so the labels and
+// assignees it applies stick. Once an open
 // incident carries its slug label, Upptime finds it again and its normal
 // open/close lifecycle resumes unaided.
 //
 // Notification
 // ------------
-// The incidents are authored by the PAT owner's own account, and GitHub does
-// not notify you about your own activity. Assigning the issue from a different
-// actor (github-actions[bot]) is what actually reaches the assignee, so the
-// assignees from .upptimerc.yml are applied here rather than left to Upptime.
+// GitHub does not notify an author about their own activity, so assigning the
+// issue from github-actions[bot] is what reaches the assignee: the assignees
+// from .upptimerc.yml are applied here rather than left to Upptime.
 //
 // The "status" label is deliberately NOT applied. build-site.mjs publishes
 // every issue carrying it as a curated public incident on the status page
