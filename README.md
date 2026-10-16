@@ -4,7 +4,8 @@ Live status page for EmpirioLabs AI services.
 
 - Live page: https://status.empiriolabs.ai
 - Uptime checks run four times every five minutes.
-- Incidents are auto-filed as issues in this repo with the `status` label.
+- A failing check opens an issue in this repo automatically; the page lists
+  incidents that carry the `status` label.
 
 ## Past incidents
 
