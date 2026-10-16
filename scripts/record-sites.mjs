@@ -53,15 +53,16 @@ const STATE_FILE = join(HISTORY_DIR, "sites-state.json");
 const CONFIG_FILE = join(ROOT, ".upptimerc.yml");
 const HISTORY_DAYS = Number(process.env.HISTORY_DAYS || 90);
 const FETCH_TIMEOUT_MS = Number(process.env.FETCH_TIMEOUT_MS || 15000);
-// Default to one sample per workflow run so the daily check count shown on the
-// page matches the number of completed scheduled runs. Workflows can override
-// SAMPLES_PER_RUN if a future self-hosted or externally triggered setup wants
-// burst sampling inside a single run.
+// One sample per run unless the workflow asks for more: Uptime CI takes four,
+// a minute apart, so each five-minute run covers its own slot.
 const SAMPLES_PER_RUN = Math.max(1, Number(process.env.SAMPLES_PER_RUN || 1));
 const SAMPLE_INTERVAL_SECONDS = Math.max(
   5,
   Number(process.env.SAMPLE_INTERVAL_SECONDS || 30)
 );
+// A failed probe is tried once more after this delay before it counts as down,
+// so a dropped connection on the runner is not recorded as an outage.
+const RETRY_DELAY_SECONDS = Math.max(0, Number(process.env.RETRY_DELAY_SECONDS || 5));
 
 function slugify(name) {
   return String(name)
@@ -139,7 +140,17 @@ function trimBuckets(entry, todayUnix) {
   entry.buckets = buckets;
 }
 
-async function probe(site) {
+// A site with `sinceParam` is asked about the time since its previous sample
+// (unix seconds in that query parameter), so a failure between two samples is
+// still recorded, and recorded once.
+function probeUrl(site, sinceUnix) {
+  if (!site.sinceParam || !Number.isFinite(sinceUnix)) return site.url;
+  const url = new URL(site.url);
+  url.searchParams.set(String(site.sinceParam), String(Math.floor(sinceUnix)));
+  return url.toString();
+}
+
+async function probe(site, url = site.url) {
   const expected = Array.isArray(site.expectedStatusCodes) && site.expectedStatusCodes.length
     ? site.expectedStatusCodes
     : [200];
@@ -149,7 +160,7 @@ async function probe(site) {
   const t = setTimeout(() => ctrl.abort(), FETCH_TIMEOUT_MS);
   const t0 = Date.now();
   try {
-    const res = await fetch(site.url, {
+    const res = await fetch(url, {
       signal: ctrl.signal,
       // Follow redirects to match the live status page's existing behavior:
       // some sites (e.g. the docs subdomain) issue a 307 to the canonical
@@ -239,12 +250,18 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-async function probeRound(sites) {
+async function probeRound(sites, state) {
   // All sites in parallel — small N, all independent network calls.
   return Promise.all(
     sites.map(async (site) => {
       const slug = site.slug || slugify(site.name);
-      const result = await probe(site);
+      const previous = state.sites[slug];
+      const url = probeUrl(site, previous ? previous.last_seen : undefined);
+      let result = await probe(site, url);
+      if (result.status === "down" && RETRY_DELAY_SECONDS > 0) {
+        await sleep(RETRY_DELAY_SECONDS * 1000);
+        result = await probe(site, url);
+      }
       return { slug, site, result };
     })
   );
@@ -262,7 +279,7 @@ async function main() {
 
   for (let i = 0; i < SAMPLES_PER_RUN; i++) {
     const sampleUnix = Math.floor(Date.now() / 1000);
-    const results = await probeRound(sites);
+    const results = await probeRound(sites, state);
     for (const { slug, site, result } of results) {
       recordSample(state, slug, site, result, sampleUnix);
       console.log(

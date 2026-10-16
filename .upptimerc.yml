@@ -14,9 +14,12 @@ sites:
     expectedStatusCodes: [200, 301, 302, 308]
     icon: https://empiriolabs.ai/images/favicon.png
 
+  # Down while API requests are failing; asked about the time since its
+  # previous check, so a failure between two checks is still recorded.
   - name: API Gateway
-    url: https://api.empiriolabs.ai/livez
+    url: https://api.empiriolabs.ai/readyz
     slug: api
+    sinceParam: since
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"status":"ok"'
     icon: https://empiriolabs.ai/images/favicon.png

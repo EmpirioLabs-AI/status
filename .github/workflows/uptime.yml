@@ -14,6 +14,7 @@ jobs:
   release:
     name: Check status of all endpoints
     runs-on: ubuntu-22.04
+    timeout-minutes: 10
     permissions:
       contents: write
       issues: write
@@ -21,7 +22,9 @@ jobs:
       - uses: actions/checkout@v5
         with:
           token: ${{ secrets.GH_PAT || github.token }}
-          fetch-depth: 0
+          # The run reads only current files. The full history took about
+          # 110 of each run's 134 seconds; that time now goes to sampling.
+          fetch-depth: 1
       - uses: actions/setup-node@v5
         with:
           node-version: "22"
@@ -41,8 +44,12 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ github.token }}
         run: node scripts/reconcile-incidents.mjs
+      # Four samples a minute apart, so each five-minute run covers its slot.
       - name: Record site snapshots
         if: always()
+        env:
+          SAMPLES_PER_RUN: "4"
+          SAMPLE_INTERVAL_SECONDS: "60"
         run: node scripts/record-sites.mjs
       - name: Record model snapshots
         if: always()
