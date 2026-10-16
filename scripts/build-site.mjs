@@ -1614,31 +1614,40 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
     // worker-keyed tiles when the static HTML already split that
     // worker into per-model tiles. Also gracefully handles older
     // /health payloads that don't include model_slugs.
-    function fanOutWorker(workerKey, w){
+    function fanOutWorker(workerKey, w, failing){
       var slugs = (w && Array.isArray(w.model_slugs))
         ? w.model_slugs.filter(function(s){ return typeof s === 'string' && s.length > 0; })
         : [];
+      // A model whose requests are failing reads Down, as an unreachable one does.
+      function mark(slug){
+        if(!failing || !slug || !failing[slug]) return w;
+        return Object.assign({}, w, { status: 'down', error: 'Requests failing', __failing: w.status !== 'down' });
+      }
       if(slugs.length <= 1){
         // key stays the worker key (service name) for tile matching + history;
         // display shows the canonical customer slug when we have one.
-        return [{ key: workerKey, w: w, display: (slugs.length === 1 ? slugs[0] : workerKey) }];
+        return [{ key: workerKey, w: mark(slugs[0]), display: (slugs.length === 1 ? slugs[0] : workerKey) }];
       }
-      return slugs.map(function(slug){ return { key: slug, w: w, display: slug }; });
+      return slugs.map(function(slug){ return { key: slug, w: mark(slug), display: slug }; });
     }
 
     function render(data){
       var workers = data.workers || {};
       var keys = Object.keys(workers);
+      var failing = {};
+      (Array.isArray(data.models_failing) ? data.models_failing : []).forEach(function(s){ failing[s] = true; });
+      var movedDown = 0;
       var loader = grid.querySelector('.workers-loading');
       if(loader) loader.remove();
       for(var i = 0; i < keys.length; i++){
         var workerKey = keys[i];
         var workerData = workers[workerKey] || {};
-        var entries = fanOutWorker(workerKey, workerData);
+        var entries = fanOutWorker(workerKey, workerData, failing);
         for(var j = 0; j < entries.length; j++){
           var name = entries[j].key;
           var display = entries[j].display || entries[j].key;
           var w = entries[j].w;
+          if(w.__failing) movedDown++;
           var st = visibleStatus(w.status);
           var label = st === 'ok' ? 'Operational' : 'Down';
           var tile = tileByName[name];
@@ -1666,6 +1675,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       var down = data.models_down != null
         ? data.models_down
         : (data.workers_down || 0);
+      // A model failing on our side counts as down, not operational.
+      up = Math.max(0, up - movedDown); down += movedDown;
       var total = data.models_total || data.workers_total || (up + down);
       var n = function(id, v){ var el = document.getElementById(id); if(el) el.textContent = v; };
       n('wmUp', up); n('wmDown', down); n('wmTotal', total);

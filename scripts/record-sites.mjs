@@ -143,12 +143,18 @@ function trimBuckets(entry, todayUnix) {
 // A site with `sinceParam` is asked about the time since its previous sample
 // (unix seconds in that query parameter), so a failure between two samples is
 // still recorded, and recorded once.
-function probeUrl(site, sinceUnix) {
-  if (!site.sinceParam || !Number.isFinite(sinceUnix)) return site.url;
-  const url = new URL(site.url);
-  url.searchParams.set(String(site.sinceParam), String(Math.floor(sinceUnix)));
+function probeUrl(site, sinceUnix, base = site.url, param = site.sinceParam) {
+  if (!param || !Number.isFinite(sinceUnix)) return base;
+  const url = new URL(base);
+  url.searchParams.set(String(param), String(Math.floor(sinceUnix)));
   return url.toString();
 }
+
+// A site may also name a readiness probe (`readyUrl`), which answers
+// {"status":"ok"}, or 503 while that service's requests are failing. The
+// sample is down when either check fails. Readiness probes are always asked
+// about the time since the previous sample.
+const READY_SITE = { expectedStatusCodes: [200], __dangerous__body_down_if_text_missing: '"status":"ok"' };
 
 async function probe(site, url = site.url) {
   const expected = Array.isArray(site.expectedStatusCodes) && site.expectedStatusCodes.length
@@ -250,18 +256,31 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+async function probeWithRetry(site, url) {
+  let result = await probe(site, url);
+  if (result.status === "down" && RETRY_DELAY_SECONDS > 0) {
+    await sleep(RETRY_DELAY_SECONDS * 1000);
+    result = await probe(site, url);
+  }
+  return result;
+}
+
 async function probeRound(sites, state) {
   // All sites in parallel — small N, all independent network calls.
   return Promise.all(
     sites.map(async (site) => {
       const slug = site.slug || slugify(site.name);
       const previous = state.sites[slug];
-      const url = probeUrl(site, previous ? previous.last_seen : undefined);
-      let result = await probe(site, url);
-      if (result.status === "down" && RETRY_DELAY_SECONDS > 0) {
-        await sleep(RETRY_DELAY_SECONDS * 1000);
-        result = await probe(site, url);
-      }
+      const since = previous ? previous.last_seen : undefined;
+      const [main, ready] = await Promise.all([
+        probeWithRetry(site, probeUrl(site, since)),
+        site.readyUrl
+          ? probeWithRetry(READY_SITE, probeUrl(site, since, site.readyUrl, "since"))
+          : null,
+      ]);
+      const result = main.status === "down" || !ready || ready.status === "up"
+        ? main
+        : { ...ready, latency_ms: main.latency_ms, error: `Readiness: ${ready.error}` };
       return { slug, site, result };
     })
   );

@@ -202,9 +202,12 @@ function recordSample(state, data, nowUnix) {
   const workers = data.workers || {};
   const day = utcDay(nowUnix);
   const seen = new Set();
+  // Public ids of models whose requests are failing on our side: down for this
+  // sample even while the model's service answers its own health check.
+  const failing = new Set(Array.isArray(data.models_failing) ? data.models_failing : []);
 
   for (const [workerKey, w] of Object.entries(workers)) {
-    const status =
+    const workerStatus =
       w.status === "ok" || w.status === "suspended" || w.status === "down"
         ? w.status
         : "down";
@@ -215,6 +218,9 @@ function recordSample(state, data, nowUnix) {
 
     for (const { key, models } of expandWorkerEntries(workerKey, w)) {
       seen.add(key);
+      const status = (Array.isArray(models) ? models : [key]).some((m) => failing.has(m))
+        ? "down"
+        : workerStatus;
 
       if (!state.workers[key]) {
         state.workers[key] = {

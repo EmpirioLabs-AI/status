@@ -3,6 +3,7 @@
 owner: EmpirioLabs-AI
 repo: status
 
+# A row with readyUrl is also down while that service's requests are failing.
 sites:
   - name: Website
     url: https://empiriolabs.ai
@@ -33,6 +34,7 @@ sites:
 
   - name: GPU Cloud
     url: https://api.empiriolabs.ai/v1/gpu/catalog
+    readyUrl: https://api.empiriolabs.ai/readyz?surface=gpu-cloud
     slug: gpu-cloud
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"object":"list"'
@@ -40,6 +42,7 @@ sites:
 
   - name: Hosted Agents
     url: https://api.empiriolabs.ai/v1/hosted-agents/health
+    readyUrl: https://api.empiriolabs.ai/readyz?surface=agents
     slug: agents
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"service":"hosted-agents"'
@@ -47,12 +50,14 @@ sites:
 
   - name: Dashboard
     url: https://platform.empiriolabs.ai/auth/login
+    readyUrl: https://platform.empiriolabs.ai/api/health/ready
     slug: dashboard
     expectedStatusCodes: [200]
     icon: https://empiriolabs.ai/images/favicon.png
 
   - name: MCP Server
     url: https://mcp.empiriolabs.ai/livez
+    readyUrl: https://api.empiriolabs.ai/readyz
     slug: mcp
     expectedStatusCodes: [200]
     __dangerous__body_down_if_text_missing: '"status":"ok"'
