@@ -19,9 +19,8 @@ jobs:
       contents: write
       issues: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          token: ${{ secrets.GH_PAT || github.token }}
           # The tip of main when the job starts, not the commit the run was
           # dispatched at: the previous run may have pushed its snapshot
           # since, and starting from older state files makes this run's
@@ -30,17 +29,32 @@ jobs:
           # seconds; that time now goes to sampling.
           ref: main
           fetch-depth: 1
-      - uses: actions/setup-node@v5
+          # No token stays in .git/config: each push below gets it for its own
+          # step only.
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
       - name: Install dependencies
-        run: npm install --no-audit --no-fund
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # uptime-monitor pushes its commit with a plain `git push`, so the push
+      # token goes into the git config for that step only.
+      - name: Let uptime-monitor push
+        env:
+          PUSH_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        run: |
+          auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
       - uses: upptime/uptime-monitor@1b53cea83cd619c9ddb2aec18366abd00cfa060d # v1.41.3
         with:
           command: "update"
         env:
           GH_PAT: ${{ secrets.GH_PAT || github.token }}
         continue-on-error: true
+      - name: Remove the push token
+        if: always()
+        run: git config --local --unset-all http.https://github.com/.extraheader || true
       # Runs with github.token so the labels and assignees it sets stick.
       # See scripts/reconcile-incidents.mjs.
       - name: Reconcile incident issues
@@ -60,6 +74,8 @@ jobs:
         run: node scripts/record-models.mjs
       - name: Commit custom snapshots if changed
         if: always()
+        env:
+          PUSH_TOKEN: ${{ secrets.GH_PAT || github.token }}
         run: |
           git config user.name "Upptime Bot"
           git config user.email "73812536+upptime-bot@users.noreply.github.com"
@@ -67,10 +83,13 @@ jobs:
             echo "No custom snapshot changes to commit."
             exit 0
           fi
+          auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          authed() { git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" "$@"; }
           git add history/sites-state.json history/models-state.json
           git commit -m "📊 Record custom status snapshots [skip ci]"
           for i in 1 2 3; do
-            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            if authed push origin "HEAD:${GITHUB_REF_NAME}"; then
               echo "Pushed on attempt $i"
               exit 0
             fi
@@ -80,7 +99,7 @@ jobs:
             # and exits 0 with this run's snapshot commit silently dropped.
             # Observed on 2026-09-15: the step reported "Pushed on attempt 2"
             # having published nothing. Fail loudly instead of swallowing it.
-            if ! git pull --rebase origin "${GITHUB_REF_NAME}"; then
+            if ! authed pull --rebase origin "${GITHUB_REF_NAME}"; then
               git rebase --abort 2>/dev/null || true
               echo "Could not rebase onto the remote; this sample is unrecorded."
               exit 1

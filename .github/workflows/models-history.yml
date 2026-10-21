@@ -19,11 +19,12 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
         with:
-          token: ${{ secrets.GH_PAT || github.token }}
           fetch-depth: 1
-      - uses: actions/setup-node@v5
+          # The push token reaches only the commit step.
+          persist-credentials: false
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
 
@@ -31,6 +32,8 @@ jobs:
         run: node scripts/record-models.mjs
 
       - name: Commit if changed
+        env:
+          PUSH_TOKEN: ${{ secrets.GH_PAT || github.token }}
         run: |
           git config user.name "Upptime Bot"
           git config user.email "73812536+upptime-bot@users.noreply.github.com"
@@ -38,18 +41,21 @@ jobs:
             echo "No changes to commit."
             exit 0
           fi
+          auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
+          echo "::add-mask::$auth"
+          authed() { git -c "http.https://github.com/.extraheader=AUTHORIZATION: basic $auth" "$@"; }
           # Pull --rebase to avoid races with the every-5-min Uptime CI commits
-          git pull --rebase origin "${GITHUB_REF_NAME}" || true
+          authed pull --rebase origin "${GITHUB_REF_NAME}" || true
           git add history/models-state.json
           git commit -m "📊 Record models snapshot [skip ci]"
           # Retry push a few times in case of concurrent commits
           for i in 1 2 3; do
-            if git push origin "HEAD:${GITHUB_REF_NAME}"; then
+            if authed push origin "HEAD:${GITHUB_REF_NAME}"; then
               echo "Pushed on attempt $i"
               exit 0
             fi
             echo "Push failed, rebasing and retrying..."
-            git pull --rebase origin "${GITHUB_REF_NAME}" || true
+            authed pull --rebase origin "${GITHUB_REF_NAME}" || true
           done
           echo "Push failed after retries"
           exit 1

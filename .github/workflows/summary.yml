@@ -5,13 +5,18 @@ on:
   repository_dispatch:
     types: [summary]
   workflow_dispatch:
+# uptime-monitor pushes its commit with the checkout's token and calls the
+# GitHub API with GH_PAT.
+permissions:
+  contents: write
+
 jobs:
   release:
     name: Generate README
     runs-on: ubuntu-22.04
     steps:
-      - uses: actions/checkout@v5
-      - uses: actions/setup-node@v5
+      - uses: actions/checkout@fbc6f3992d24b796d5a048ff273f7fcc4a7b6c09 # v5.1.0
+      - uses: actions/setup-node@a0853c24544627f65ddf259abe73b1d18a591444 # v5.0.0
         with:
           node-version: "22"
       - uses: upptime/uptime-monitor@1b53cea83cd619c9ddb2aec18366abd00cfa060d # v1.41.3
