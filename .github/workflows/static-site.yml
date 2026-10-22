@@ -20,6 +20,10 @@ on:
 concurrency:
   group: static-site-deploy
   cancel-in-progress: false
+# Each job sets the token permissions it needs; anything else reads only.
+permissions:
+  contents: read
+
 jobs:
   release:
     name: Build and deploy site

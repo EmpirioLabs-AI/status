@@ -7,6 +7,10 @@ concurrency:
   group: sites-history
   cancel-in-progress: false
 
+# Each job sets the token permissions it needs; anything else reads only.
+permissions:
+  contents: read
+
 jobs:
   record:
     name: Record sites snapshot
