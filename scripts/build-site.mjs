@@ -1160,6 +1160,23 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .workers-refresh:hover:not(:disabled) { border-color: #0a7cff; color: #4a9bff; }
   .workers-refresh:disabled { opacity: 0.5; cursor: wait; }
   .workers-grid { display: flex; flex-direction: column; gap: 14px; }
+  /* The list carries a row per model with history, over 200 of them, so it is
+     collapsed by default and the summary line above it carries the state. */
+  .workers-collapse { position: relative; }
+  .workers-collapse.is-collapsed .workers-grid { max-height: 326px; overflow: hidden; }
+  .workers-collapse.is-collapsed::after {
+    content: ""; position: absolute; left: 0; right: 0; bottom: 0; height: 90px;
+    background: linear-gradient(to bottom, rgba(8, 15, 30, 0), #080f1e); pointer-events: none;
+  }
+  .workers-toggle {
+    display: block; width: 100%; margin-top: 12px; padding: 8px 12px;
+    background: transparent; border: 1px solid #1b2a47; border-radius: 8px;
+    color: #a8b3c7; font: inherit; font-size: 0.82rem; cursor: pointer;
+  }
+  .workers-toggle:hover { border-color: #0a7cff; color: #4a9bff; }
+  @media (prefers-reduced-motion: no-preference) {
+    .workers-collapse .workers-grid { transition: max-height 0.2s ease; }
+  }
   .worker-tile {
     display: flex; flex-direction: column; gap: 4px;
     padding: 10px 0;
@@ -1389,11 +1406,14 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       <span>of <strong id="wmTotal">0</strong> total</span>
       <button type="button" class="workers-refresh" id="wmRefresh" title="Force a fresh probe">Refresh</button>
     </div>
-    <div class="workers-grid" id="workersGrid">${
-      modelsTilesHtml
-        ? modelsTilesHtml
-        : '<div class="workers-loading">Fetching live worker status…</div>'
-    }</div>
+    <div class="workers-collapse is-collapsed" id="workersCollapse">
+      <div class="workers-grid" id="workersGrid">${
+        modelsTilesHtml
+          ? modelsTilesHtml
+          : '<div class="workers-loading">Fetching live worker status…</div>'
+      }</div>
+    </div>
+    <button type="button" class="workers-toggle" id="workersToggle" aria-expanded="false" aria-controls="workersGrid">Show all models</button>
     <div class="bars-axis models-axis">
       <span>${HISTORY_DAYS} days ago</span>
       <span>Today</span>
@@ -1462,6 +1482,38 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
     var updated = document.getElementById('workersUpdated');
     var refreshBtn = document.getElementById('wmRefresh');
     if(!grid) return;
+
+    /* The model list is collapsed by default: over 200 tiles is longer than the rest of
+       the page together. The toggle opens itself when the live fetch reports a model down,
+       so a customer never has to expand a list to find the one model that is failing. */
+    var collapse = document.getElementById('workersCollapse');
+    var toggle = document.getElementById('workersToggle');
+    function syncToggle(){
+      if(!collapse || !toggle) return;
+      if(!grid.querySelectorAll('.worker-tile').length){ toggle.hidden = true; return; }
+      toggle.hidden = false;
+      var open = !collapse.classList.contains('is-collapsed');
+      // No count in the label: the list has a row for every model with history, which is
+      // not always the live total printed one line above it, and two numbers that
+      // disagree on the same card read as a bug.
+      toggle.textContent = open ? 'Show fewer models' : 'Show all models';
+      toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    }
+    function expandForProblems(downCount){
+      if(!collapse || !downCount) return;
+      collapse.classList.remove('is-collapsed');
+      syncToggle();
+    }
+    if(toggle && collapse){
+      toggle.addEventListener('click', function(){
+        collapse.classList.toggle('is-collapsed');
+        syncToggle();
+        if(collapse.classList.contains('is-collapsed')){
+          collapse.scrollIntoView({ block: 'nearest' });
+        }
+      });
+      syncToggle();
+    }
 
     var ENDPOINT = 'https://api.empiriolabs.ai/health';
     var POLL_MS = 30000;
@@ -1704,6 +1756,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       var total = data.models_total || data.workers_total || (up + down);
       var n = function(id, v){ var el = document.getElementById(id); if(el) el.textContent = v; };
       n('wmUp', up); n('wmDown', down); n('wmTotal', total);
+      syncToggle();
+      expandForProblems(down);
       lastChecked = data.checked_at != null ? data.checked_at : Date.now();
       tickAge();
     }
