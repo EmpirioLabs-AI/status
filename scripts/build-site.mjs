@@ -7,8 +7,6 @@ import { execSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
-import { componentMetrics, incidentHistory, incidentStatus,
-  formatCheckPercent, validateIncidentComponents } from "./history-metrics.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -151,8 +149,6 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
           createdAt,
           closedAt,
           body,
-          components: meta.components,
-          monitoringGap: meta.monitoring_gap === true,
           summary: incidentSummary(body),
           timeline: incidentTimeline(body),
           url: i.url,
@@ -170,7 +166,7 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   } catch {
-    throw new Error("Incident history could not be read; keeping the previously published page");
+    return [];
   }
 }
 
@@ -457,7 +453,6 @@ function renderBars(buckets, ariaLabel) {
         `data-o="${b.ok || 0}"`,
         `data-x="${b.down || 0}"`,
         `data-r="${b.avgResponseTime || 0}"`,
-        `data-i="${b.incidentSeconds || 0}"`,
       ].join(" ");
       return `<span ${attrs}></span>`;
     })
@@ -475,10 +470,11 @@ function escapeHtml(s) {
 
 function fmtPct(n) {
   if (n === null) return "—";
-  return formatCheckPercent(n);
+  if (n >= 99.995) return "100%";
+  return `${n.toFixed(2)}%`;
 }
 
-function buildSitePayload(config, incidents) {
+function buildSitePayload(config) {
   const sitesState = readSitesState();
   const sites = (config.sites || []).map((s) => {
     const slug = s.slug || slugify(s.name);
@@ -511,9 +507,7 @@ function buildSitePayload(config, incidents) {
       lastUpdated = current?.lastUpdated || null;
     }
 
-    const metrics = componentMetrics(buckets, incidents, slug);
-    buckets = incidentHistory(buckets, incidents, slug);
-    status = incidentStatus(status, incidents, slug);
+    const pct = uptimePercent(buckets);
     return {
       name: s.name,
       url: s.url,
@@ -522,8 +516,7 @@ function buildSitePayload(config, incidents) {
       code,
       responseTime,
       lastUpdated,
-      ...metrics,
-      recordedIncidentSeconds: buckets.reduce((n, b) => n + (b.incidentSeconds || 0), 0),
+      uptimePercent: pct,
       history: buckets,
     };
   });
@@ -756,7 +749,7 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
               <span class="${dotCls}"></span>
               <a href="${escapeHtml(s.url)}" rel="noopener" target="_blank">${escapeHtml(s.name)}</a>
             </div>
-            <div class="service-uptime" title="${s.monitoringGap ? "Monitoring missed a recorded interruption, so an accurate uptime percentage is unavailable." : "Based on recorded availability checks."}">${s.monitoringGap ? "Limited history" : `${fmtPct(s.uptimePercent)} uptime`}</div>
+            <div class="service-uptime">${fmtPct(s.uptimePercent)} uptime</div>
           </div>
           ${barsHtml}
           <div class="bars-axis">
@@ -1952,7 +1945,6 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       var ok = parseInt(bar.getAttribute('data-o') || '0', 10) || 0;
       var down = parseInt(bar.getAttribute('data-x') || '0', 10) || 0;
       var rt = parseInt(bar.getAttribute('data-r') || '0', 10) || 0;
-      var incidentMinutes = Math.ceil((Number(bar.getAttribute('data-i')) || 0) / 60);
       var label = STATUS_LABEL[status] || STATUS_LABEL.none;
       var dotCls = DOT_CLASS[status] || DOT_CLASS.none;
       var rows = '';
@@ -1968,7 +1960,6 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
           (breakdown ? '<div class="tt-row tt-muted"><span class="tt-key">Breakdown</span><span class="tt-val">' + esc(breakdown) + '</span></div>' : '') +
           (rt > 0 ? '<div class="tt-row"><span class="tt-key">Avg response</span><span class="tt-val">' + rt + ' ms</span></div>' : '');
       }
-      if(incidentMinutes) rows += '<div class="tt-row"><span class="tt-key">Recorded disruption</span><span class="tt-val">' + incidentMinutes + ' min</span></div>';
       return (
         '<span class="tt-date">' + esc(date) + '</span>' +
         '<span class="tt-status"><span class="' + dotCls + '"></span>' + esc(label) + '</span>' +
@@ -2144,9 +2135,8 @@ ${entries}
 
 function main() {
   const config = loadConfig();
+  const sites = buildSitePayload(config);
   const incidents = loadIncidents(config.owner, config.repo);
-  validateIncidentComponents(incidents, (config.sites || []).map((s) => s.slug || slugify(s.name)));
-  const sites = buildSitePayload(config, incidents);
   const overall = overallStatus(sites);
   const generatedAt = new Date().toISOString();
   const modelsState = readModelsState();
@@ -2180,11 +2170,6 @@ function main() {
       url: s.url,
       status: s.status,
       uptimePercent: s.uptimePercent,
-      checkSuccessPercent: s.checkSuccessPercent,
-      monitoringGap: s.monitoringGap,
-      measurement: "sampled-checks",
-      coverageStart: s.coverageStart,
-      recordedIncidentSeconds: s.recordedIncidentSeconds,
       lastUpdated: s.lastUpdated,
     })),
   };
