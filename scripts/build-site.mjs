@@ -7,7 +7,7 @@ import { execSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
-import { checkSuccessPercent, incidentHistory, incidentStatus, coverageStart, durationLabel,
+import { componentMetrics, incidentHistory, incidentStatus,
   formatCheckPercent, validateIncidentComponents } from "./history-metrics.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -152,6 +152,7 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
           closedAt,
           body,
           components: meta.components,
+          monitoringGap: meta.monitoring_gap === true,
           summary: incidentSummary(body),
           timeline: incidentTimeline(body),
           url: i.url,
@@ -271,7 +272,16 @@ function bucketByDay(points, days = HISTORY_DAYS) {
   return result;
 }
 
-const uptimePercent = checkSuccessPercent;
+function uptimePercent(buckets) {
+  const measured = buckets.filter((b) => b.status !== "none" && b.checks > 0);
+  const totalChecks = measured.reduce((sum, b) => sum + (b.checks || 0), 0);
+  if (totalChecks === 0) return null;
+  const failedChecks = measured.reduce((sum, b) => {
+    if (typeof b.down === "number") return sum + b.down;
+    return sum + (b.status === "up" ? 0 : b.checks || 0);
+  }, 0);
+  return ((totalChecks - failedChecks) / totalChecks) * 100;
+}
 
 // ---- Sites state (history/sites-state.json) ----
 // Mirrors the models-state.json shape but per-site. Populated by
@@ -463,7 +473,10 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-const fmtPct = formatCheckPercent;
+function fmtPct(n) {
+  if (n === null) return "—";
+  return formatCheckPercent(n);
+}
 
 function buildSitePayload(config, incidents) {
   const sitesState = readSitesState();
@@ -498,11 +511,9 @@ function buildSitePayload(config, incidents) {
       lastUpdated = current?.lastUpdated || null;
     }
 
-    status = incidentStatus(status, incidents, slug);
-    const pct = checkSuccessPercent(buckets);
-    const measuredFrom = coverageStart(buckets);
+    const metrics = componentMetrics(buckets, incidents, slug);
     buckets = incidentHistory(buckets, incidents, slug);
-    const incidentSeconds = buckets.reduce((sum, b) => sum + (b.incidentSeconds || 0), 0);
+    status = incidentStatus(status, incidents, slug);
     return {
       name: s.name,
       url: s.url,
@@ -511,10 +522,8 @@ function buildSitePayload(config, incidents) {
       code,
       responseTime,
       lastUpdated,
-      uptimePercent: pct, // compatibility: sampled checks, never continuous availability
-      checkSuccessPercent: pct,
-      coverageStart: measuredFrom,
-      recordedIncidentSeconds: incidentSeconds,
+      ...metrics,
+      recordedIncidentSeconds: buckets.reduce((n, b) => n + (b.incidentSeconds || 0), 0),
       history: buckets,
     };
   });
@@ -567,7 +576,7 @@ function fmtDate(iso) {
 function renderIncidentsSection(incidents) {
   if (!incidents.length) {
     return `
-    <section class="card" id="incidents">
+    <section class="card">
       <div class="card-header">
         <span>Past incidents</span>
         <span class="card-range">Last 90 days</span>
@@ -628,7 +637,7 @@ function renderIncidentsSection(incidents) {
   const incidentLabel =
     incidents.length === 1 ? "1 incident" : `${incidents.length} incidents`;
   return `
-    <section class="card" id="incidents">
+    <section class="card">
       <div class="card-header">
         <span>Past incidents</span>
         <span class="card-range">${incidentLabel} in last 90 days</span>
@@ -697,7 +706,7 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
         w && Array.isArray(w.models) && w.models.length ? w.models[0] : key;
       const buckets = modelBuckets(w, HISTORY_DAYS);
       const pct = uptimePercent(buckets);
-      const uptimeDetail = pct == null ? "" : `${fmtPct(pct)} checks passed`;
+      const uptimeDetail = pct == null ? "" : `${fmtPct(pct)} uptime`;
       const todays = buckets[buckets.length - 1];
       // Server-rendered initial state is intentionally neutral — the live JS
       // poller hydrates the dot/state/detail with the gateway's current view
@@ -737,7 +746,7 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
 
       const barsHtml = renderBars(
         s.history,
-        `${HISTORY_DAYS} day check and incident history for ${s.name}`
+        `${HISTORY_DAYS} day uptime history for ${s.name}`
       );
 
       return `
@@ -747,13 +756,9 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
               <span class="${dotCls}"></span>
               <a href="${escapeHtml(s.url)}" rel="noopener" target="_blank">${escapeHtml(s.name)}</a>
             </div>
-            <div class="service-uptime">${s.checkSuccessPercent == null ? "No checks yet" : `${fmtPct(s.checkSuccessPercent)} checks passed`}</div>
+            <div class="service-uptime" title="${s.monitoringGap ? "Monitoring missed a recorded interruption, so an accurate uptime percentage is unavailable." : "Based on recorded availability checks."}">${s.monitoringGap ? "Limited history" : `${fmtPct(s.uptimePercent)} uptime`}</div>
           </div>
           ${barsHtml}
-          <div class="service-evidence">
-            <span>${s.coverageStart ? `Checks since ${escapeHtml(s.coverageStart)}` : "Monitoring history unavailable"}</span>
-            ${s.recordedIncidentSeconds ? `<a href="#incidents">${durationLabel(s.recordedIncidentSeconds)} of recorded disruption</a>` : ""}
-          </div>
           <div class="bars-axis">
             <span>${HISTORY_DAYS} days ago</span>
             <span>Today</span>
@@ -910,7 +915,7 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .service:first-child { padding-top: 0; }
 
   .service-header {
-    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px;
+    display: flex; align-items: center; justify-content: space-between;
     margin-bottom: 10px;
   }
   .service-name {
@@ -920,8 +925,6 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .service-name a { color: #e6edf6; }
   .service-name a:hover { color: #fff; }
   .service-uptime { color: #8a96b0; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
-  .service-evidence { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 8px; color: #8a96b0; font-size: 0.75rem; }
-  .history-note { color: #8a96b0; font-size: 0.8rem; line-height: 1.5; margin: 0 0 14px; max-width: 70ch; }
 
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
   .dot-up { background: #1ed688; box-shadow: 0 0 0 3px rgba(30,214,136,0.15); }
@@ -1239,10 +1242,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   }
   .workers-error { color: #ff4d6a; }
   @media (max-width: 520px) {
-    .worker-row { grid-template-columns: 16px minmax(0, 1fr) 7.5em; gap: 4px 8px; }
-    .worker-state { text-align: right; white-space: nowrap; }
-    .worker-name { white-space: normal; overflow-wrap: anywhere; }
-    .worker-detail { grid-column: 2 / -1; text-align: left; min-width: 0; }
+    .worker-row { grid-template-columns: 16px 1fr auto; }
+    .worker-detail { display: none; }
   }
 
   /* custom right-click context menu */
@@ -1402,7 +1403,6 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       <span>System status</span>
       <span class="card-range">${escapeHtml(monthRange)}</span>
     </div>
-    <p class="history-note">Percentages show successful checks, not continuous uptime. Daily history also includes confirmed incidents. Gray days have no recorded checks.</p>
     ${sitesHtml}
   </section>
 
@@ -2181,6 +2181,7 @@ function main() {
       status: s.status,
       uptimePercent: s.uptimePercent,
       checkSuccessPercent: s.checkSuccessPercent,
+      monitoringGap: s.monitoringGap,
       measurement: "sampled-checks",
       coverageStart: s.coverageStart,
       recordedIncidentSeconds: s.recordedIncidentSeconds,

@@ -42,6 +42,13 @@ export function coverageStart(buckets) {
   return buckets.find((b) => b.checks > 0)?.date || null;
 }
 
+export function componentMetrics(buckets, incidents, slug) {
+  const checks = checkSuccessPercent(buckets);
+  const gap = incidents.some((i) => i.monitoringGap && i.components?.includes(slug));
+  return { uptimePercent: gap ? null : checks, checkSuccessPercent: checks,
+    monitoringGap: gap, coverageStart: coverageStart(buckets) };
+}
+
 export function incidentStatus(observed, incidents, slug, now = Date.now()) {
   if (observed === "down") return observed;
   return incidents.some((i) => i.state === "OPEN" && i.components?.includes(slug) &&
