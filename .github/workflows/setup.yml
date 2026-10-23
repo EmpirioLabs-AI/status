@@ -21,7 +21,7 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
-      - uses: upptime/uptime-monitor@1b53cea83cd619c9ddb2aec18366abd00cfa060d # v1.41.3
+      - uses: upptime/uptime-monitor@a284d6064bcbf89db3f1e2a6c533d0e69111573b # v1.46.0
         # uptime-monitor has no "setup" command at this commit, so this runs its
         # default, the status check. Its "update-template" command would rewrite
         # this repository's workflows from Upptime's template (unpinned actions, no
