@@ -7,6 +7,8 @@ import { execSync } from "node:child_process";
 import { join, dirname } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { checkSuccessPercent, incidentHistory, incidentStatus, coverageStart, durationLabel,
+  formatCheckPercent, validateIncidentComponents } from "./history-metrics.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -149,6 +151,7 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
           createdAt,
           closedAt,
           body,
+          components: meta.components,
           summary: incidentSummary(body),
           timeline: incidentTimeline(body),
           url: i.url,
@@ -166,7 +169,7 @@ function loadIncidents(owner, repo, label = "status", limit = 25) {
       })
       .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt)));
   } catch {
-    return [];
+    throw new Error("Incident history could not be read; keeping the previously published page");
   }
 }
 
@@ -268,16 +271,7 @@ function bucketByDay(points, days = HISTORY_DAYS) {
   return result;
 }
 
-function uptimePercent(buckets) {
-  const measured = buckets.filter((b) => b.status !== "none" && b.checks > 0);
-  const totalChecks = measured.reduce((sum, b) => sum + (b.checks || 0), 0);
-  if (totalChecks === 0) return null;
-  const failedChecks = measured.reduce((sum, b) => {
-    if (typeof b.down === "number") return sum + b.down;
-    return sum + (b.status === "up" ? 0 : b.checks || 0);
-  }, 0);
-  return ((totalChecks - failedChecks) / totalChecks) * 100;
-}
+const uptimePercent = checkSuccessPercent;
 
 // ---- Sites state (history/sites-state.json) ----
 // Mirrors the models-state.json shape but per-site. Populated by
@@ -453,6 +447,7 @@ function renderBars(buckets, ariaLabel) {
         `data-o="${b.ok || 0}"`,
         `data-x="${b.down || 0}"`,
         `data-r="${b.avgResponseTime || 0}"`,
+        `data-i="${b.incidentSeconds || 0}"`,
       ].join(" ");
       return `<span ${attrs}></span>`;
     })
@@ -468,13 +463,9 @@ function escapeHtml(s) {
     .replace(/"/g, "&quot;");
 }
 
-function fmtPct(n) {
-  if (n === null) return "—";
-  if (n >= 99.995) return "100%";
-  return `${n.toFixed(2)}%`;
-}
+const fmtPct = formatCheckPercent;
 
-function buildSitePayload(config) {
+function buildSitePayload(config, incidents) {
   const sitesState = readSitesState();
   const sites = (config.sites || []).map((s) => {
     const slug = s.slug || slugify(s.name);
@@ -507,7 +498,11 @@ function buildSitePayload(config) {
       lastUpdated = current?.lastUpdated || null;
     }
 
-    const pct = uptimePercent(buckets);
+    status = incidentStatus(status, incidents, slug);
+    const pct = checkSuccessPercent(buckets);
+    const measuredFrom = coverageStart(buckets);
+    buckets = incidentHistory(buckets, incidents, slug);
+    const incidentSeconds = buckets.reduce((sum, b) => sum + (b.incidentSeconds || 0), 0);
     return {
       name: s.name,
       url: s.url,
@@ -516,7 +511,10 @@ function buildSitePayload(config) {
       code,
       responseTime,
       lastUpdated,
-      uptimePercent: pct,
+      uptimePercent: pct, // compatibility: sampled checks, never continuous availability
+      checkSuccessPercent: pct,
+      coverageStart: measuredFrom,
+      recordedIncidentSeconds: incidentSeconds,
       history: buckets,
     };
   });
@@ -569,7 +567,7 @@ function fmtDate(iso) {
 function renderIncidentsSection(incidents) {
   if (!incidents.length) {
     return `
-    <section class="card">
+    <section class="card" id="incidents">
       <div class="card-header">
         <span>Past incidents</span>
         <span class="card-range">Last 90 days</span>
@@ -630,7 +628,7 @@ function renderIncidentsSection(incidents) {
   const incidentLabel =
     incidents.length === 1 ? "1 incident" : `${incidents.length} incidents`;
   return `
-    <section class="card">
+    <section class="card" id="incidents">
       <div class="card-header">
         <span>Past incidents</span>
         <span class="card-range">${incidentLabel} in last 90 days</span>
@@ -699,7 +697,7 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
         w && Array.isArray(w.models) && w.models.length ? w.models[0] : key;
       const buckets = modelBuckets(w, HISTORY_DAYS);
       const pct = uptimePercent(buckets);
-      const uptimeDetail = pct == null ? "" : `${fmtPct(pct)} uptime`;
+      const uptimeDetail = pct == null ? "" : `${fmtPct(pct)} checks passed`;
       const todays = buckets[buckets.length - 1];
       // Server-rendered initial state is intentionally neutral — the live JS
       // poller hydrates the dot/state/detail with the gateway's current view
@@ -739,7 +737,7 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
 
       const barsHtml = renderBars(
         s.history,
-        `${HISTORY_DAYS} day uptime history for ${s.name}`
+        `${HISTORY_DAYS} day check and incident history for ${s.name}`
       );
 
       return `
@@ -749,9 +747,13 @@ function renderHtml({ config, sites, overall, incidents, generatedAt, modelsStat
               <span class="${dotCls}"></span>
               <a href="${escapeHtml(s.url)}" rel="noopener" target="_blank">${escapeHtml(s.name)}</a>
             </div>
-            <div class="service-uptime">${fmtPct(s.uptimePercent)} uptime</div>
+            <div class="service-uptime">${s.checkSuccessPercent == null ? "No checks yet" : `${fmtPct(s.checkSuccessPercent)} checks passed`}</div>
           </div>
           ${barsHtml}
+          <div class="service-evidence">
+            <span>${s.coverageStart ? `Checks since ${escapeHtml(s.coverageStart)}` : "Monitoring history unavailable"}</span>
+            ${s.recordedIncidentSeconds ? `<a href="#incidents">${durationLabel(s.recordedIncidentSeconds)} of recorded disruption</a>` : ""}
+          </div>
           <div class="bars-axis">
             <span>${HISTORY_DAYS} days ago</span>
             <span>Today</span>
@@ -908,7 +910,7 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .service:first-child { padding-top: 0; }
 
   .service-header {
-    display: flex; align-items: center; justify-content: space-between;
+    display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 4px 12px;
     margin-bottom: 10px;
   }
   .service-name {
@@ -918,6 +920,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   .service-name a { color: #e6edf6; }
   .service-name a:hover { color: #fff; }
   .service-uptime { color: #8a96b0; font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+  .service-evidence { display: flex; flex-wrap: wrap; justify-content: space-between; gap: 4px 12px; margin-top: 8px; color: #8a96b0; font-size: 0.75rem; }
+  .history-note { color: #8a96b0; font-size: 0.8rem; line-height: 1.5; margin: 0 0 14px; max-width: 70ch; }
 
   .dot { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
   .dot-up { background: #1ed688; box-shadow: 0 0 0 3px rgba(30,214,136,0.15); }
@@ -1235,8 +1239,10 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
   }
   .workers-error { color: #ff4d6a; }
   @media (max-width: 520px) {
-    .worker-row { grid-template-columns: 16px 1fr auto; }
-    .worker-detail { display: none; }
+    .worker-row { grid-template-columns: 16px minmax(0, 1fr) 7.5em; gap: 4px 8px; }
+    .worker-state { text-align: right; white-space: nowrap; }
+    .worker-name { white-space: normal; overflow-wrap: anywhere; }
+    .worker-detail { grid-column: 2 / -1; text-align: left; min-width: 0; }
   }
 
   /* custom right-click context menu */
@@ -1396,6 +1402,7 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       <span>System status</span>
       <span class="card-range">${escapeHtml(monthRange)}</span>
     </div>
+    <p class="history-note">Percentages show successful checks, not continuous uptime. Daily history also includes confirmed incidents. Gray days have no recorded checks.</p>
     ${sitesHtml}
   </section>
 
@@ -1945,6 +1952,7 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       var ok = parseInt(bar.getAttribute('data-o') || '0', 10) || 0;
       var down = parseInt(bar.getAttribute('data-x') || '0', 10) || 0;
       var rt = parseInt(bar.getAttribute('data-r') || '0', 10) || 0;
+      var incidentMinutes = Math.ceil((Number(bar.getAttribute('data-i')) || 0) / 60);
       var label = STATUS_LABEL[status] || STATUS_LABEL.none;
       var dotCls = DOT_CLASS[status] || DOT_CLASS.none;
       var rows = '';
@@ -1960,6 +1968,7 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
           (breakdown ? '<div class="tt-row tt-muted"><span class="tt-key">Breakdown</span><span class="tt-val">' + esc(breakdown) + '</span></div>' : '') +
           (rt > 0 ? '<div class="tt-row"><span class="tt-key">Avg response</span><span class="tt-val">' + rt + ' ms</span></div>' : '');
       }
+      if(incidentMinutes) rows += '<div class="tt-row"><span class="tt-key">Recorded disruption</span><span class="tt-val">' + incidentMinutes + ' min</span></div>';
       return (
         '<span class="tt-date">' + esc(date) + '</span>' +
         '<span class="tt-status"><span class="' + dotCls + '"></span>' + esc(label) + '</span>' +
@@ -2135,8 +2144,9 @@ ${entries}
 
 function main() {
   const config = loadConfig();
-  const sites = buildSitePayload(config);
   const incidents = loadIncidents(config.owner, config.repo);
+  validateIncidentComponents(incidents, (config.sites || []).map((s) => s.slug || slugify(s.name)));
+  const sites = buildSitePayload(config, incidents);
   const overall = overallStatus(sites);
   const generatedAt = new Date().toISOString();
   const modelsState = readModelsState();
@@ -2170,6 +2180,10 @@ function main() {
       url: s.url,
       status: s.status,
       uptimePercent: s.uptimePercent,
+      checkSuccessPercent: s.checkSuccessPercent,
+      measurement: "sampled-checks",
+      coverageStart: s.coverageStart,
+      recordedIncidentSeconds: s.recordedIncidentSeconds,
       lastUpdated: s.lastUpdated,
     })),
   };

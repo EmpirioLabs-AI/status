@@ -5,7 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/build-site.mjs"
+    "build": "node --test scripts/history-metrics.test.mjs && node scripts/build-site.mjs"
   },
   "dependencies": {
     "js-yaml": "^4.1.0"
