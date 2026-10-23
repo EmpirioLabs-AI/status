@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { checkSuccessPercent, incidentHistory, incidentStatus, coverageStart, durationLabel, formatCheckPercent,
+import { checkSuccessPercent, componentMetrics, incidentHistory, incidentStatus, coverageStart, durationLabel, formatCheckPercent,
   validateIncidentComponents } from "./history-metrics.mjs";
 
 const buckets = [
@@ -57,6 +57,15 @@ test("missing history has no percentage and no invented coverage", () => {
   assert.equal(checkSuccessPercent([{ checks: 5, down: 1 }]), 80);
   assert.equal(formatCheckPercent(99.999), "99.99%");
   assert.equal(formatCheckPercent(100), "100%");
+});
+
+test("a confirmed monitoring gap suppresses the uptime claim without rewriting the samples", () => {
+  const missed = { ...outage, monitoringGap: true };
+  const metrics = componentMetrics(buckets, [missed], "account-sign-in");
+  assert.equal(metrics.uptimePercent, null);
+  assert.equal(metrics.checkSuccessPercent, 100);
+  assert.equal(metrics.monitoringGap, true);
+  assert.equal(componentMetrics(buckets, [missed], "api").uptimePercent, 100);
 });
 
 test("missing components, unknown components and bad windows fail publication", () => {
