@@ -1181,8 +1181,14 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
     display: flex; flex-direction: column; gap: 4px;
     padding: 10px 0;
     border-bottom: 1px solid #0e1a31;
-    content-visibility: auto;
-    contain-intrinsic-size: auto 54px;
+    /* No content-visibility here. It reserved 54px for tiles that really render 57 to 75px, so
+       the document shrank and grew under the reader as rows scrolled in and out: about 1,800px
+       of height lost over six wheel steps, which felt like the page fighting anyone scrolling up
+       and sticking at the bottom (reported 2026-10-22). Raising the reservation to the measured
+       height still drifted 1,331px, because a wrapped name makes a tile taller again. It was
+       there to keep 200+ rows cheap; the list is collapsed by default now, so the rows only
+       render for someone who asked to see them, and an exact document height is worth more. */
+    contain: none;
   }
   .worker-tile:last-child { border-bottom: 0; padding-bottom: 0; }
   .worker-tile .bars { height: 14px; margin-top: 2px; }
