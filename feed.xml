@@ -1,0 +1,72 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <id>https://status.empiriolabs.ai/</id>
+  <title>EmpirioLabs AI Status</title>
+  <link rel="self" href="https://status.empiriolabs.ai/feed.xml" />
+  <link rel="alternate" href="https://status.empiriolabs.ai/" />
+  <updated>2026-10-24T17:21:00.931Z</updated>
+  <author><name>EmpirioLabs AI</name></author>
+  <entry>
+    <id>https://github.com/EmpirioLabs-AI/status/issues/70</id>
+    <title>Email and password sign-in failed (3:25 to 11:36 AM PDT)</title>
+    <link rel="alternate" href="https://github.com/EmpirioLabs-AI/status/issues/70" />
+    <updated>2026-10-22T18:36:00.000Z</updated>
+    <published>2026-10-22T10:25:00.000Z</published>
+    <summary>Resolved</summary>
+    <content type="text">&lt;!-- status-incident
+monitoring_gap: true
+components: [&quot;account-sign-in&quot;,&quot;dashboard&quot;]
+started_at: 2026-10-22T10:25:00Z
+resolved_at: 2026-10-22T18:36:00Z
+--&gt;
+
+Signing in and signing up with an email address and password failed. Google and GitHub sign-in worked throughout, and the API, the playground and running work were unaffected.
+
+Timeline (Pacific time):
+- Oct 22, 2026, 3:25 AM: Sign-in and sign-up with an email address began to fail.
+- Oct 22, 2026, 11:36 AM: Sign-in and sign-up with an email address were working normally again.
+</content>
+  </entry>
+  <entry>
+    <id>https://github.com/EmpirioLabs-AI/status/issues/65</id>
+    <title>API errors and slow dashboard pages (8:34 to 8:42 AM PDT)</title>
+    <link rel="alternate" href="https://github.com/EmpirioLabs-AI/status/issues/65" />
+    <updated>2026-10-16T15:42:25.000Z</updated>
+    <published>2026-10-16T15:34:41.000Z</published>
+    <summary>Resolved</summary>
+    <content type="text">&lt;!-- status-incident
+monitoring_gap: true
+components: [&quot;api&quot;,&quot;dashboard&quot;]
+started_at: 2026-10-16T15:34:41Z
+resolved_at: 2026-10-16T15:42:25Z
+--&gt;
+
+A repeat of the 5:40 AM incident, lasting longer. Some API requests returned a 503 error, and some dashboard pages were slow or did not load. Failed requests were not charged.
+
+Timeline (Pacific time):
+- Oct 16, 2026, 8:34 AM: API requests again began returning 503 errors and some dashboard pages stopped loading.
+- Oct 16, 2026, 8:42 AM: API requests and dashboard pages were working normally again.
+</content>
+  </entry>
+  <entry>
+    <id>https://github.com/EmpirioLabs-AI/status/issues/64</id>
+    <title>API errors and slow dashboard pages (5:40 to 5:44 AM PDT)</title>
+    <link rel="alternate" href="https://github.com/EmpirioLabs-AI/status/issues/64" />
+    <updated>2026-10-16T12:44:00.000Z</updated>
+    <published>2026-10-16T12:40:22.000Z</published>
+    <summary>Resolved</summary>
+    <content type="text">&lt;!-- status-incident
+monitoring_gap: true
+components: [&quot;api&quot;,&quot;dashboard&quot;]
+started_at: 2026-10-16T12:40:22Z
+resolved_at: 2026-10-16T12:44:00Z
+--&gt;
+
+Some API requests returned a 503 error, and some dashboard pages were slow or did not load. Failed requests were not charged.
+
+Timeline (Pacific time):
+- Oct 16, 2026, 5:40 AM: API requests began returning 503 errors and some dashboard pages stopped loading.
+- Oct 16, 2026, 5:44 AM: API requests and dashboard pages were working normally again.
+</content>
+  </entry>
+</feed>
