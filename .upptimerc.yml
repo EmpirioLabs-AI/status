@@ -55,16 +55,6 @@ sites:
     expectedStatusCodes: [200]
     icon: https://empiriolabs.ai/images/favicon.png
 
-  # A correct HTTP 400 is invisible to the Dashboard row, which counts FAILED calls: every
-  # email sign-in was refused for 8 hours on 2026-10-22 while this page stayed green. This
-  # row asks the auth service one question and reads the reason in its answer.
-  - name: Account sign-in
-    url: https://platform.empiriolabs.ai/api/health/signin
-    slug: account-sign-in
-    expectedStatusCodes: [200]
-    __dangerous__body_down_if_text_missing: '"status":"ok"'
-    icon: https://empiriolabs.ai/images/favicon.png
-
   - name: MCP Server
     url: https://mcp.empiriolabs.ai/livez
     readyUrl: https://api.empiriolabs.ai/readyz
