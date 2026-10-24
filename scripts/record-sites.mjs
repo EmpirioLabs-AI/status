@@ -294,6 +294,12 @@ async function main() {
     process.exit(1);
   }
   const state = loadState();
+  // State is kept only for configured rows, so a row removed from
+  // .upptimerc.yml takes its samples with it at the next run.
+  const configured = new Set(sites.map((site) => site.slug || slugify(site.name)));
+  for (const slug of Object.keys(state.sites)) {
+    if (!configured.has(slug)) delete state.sites[slug];
+  }
   let totalSamples = 0;
 
   for (let i = 0; i < SAMPLES_PER_RUN; i++) {
