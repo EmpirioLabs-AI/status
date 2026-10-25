@@ -50,7 +50,7 @@ sites:
 
   - name: Dashboard
     url: https://platform.empiriolabs.ai/auth/login
-    readyUrl: https://platform.empiriolabs.ai/api/health/ready
+    readyUrl: https://platform.empiriolabs.ai/api/health/ready?surface=dashboard
     slug: dashboard
     expectedStatusCodes: [200]
     icon: https://empiriolabs.ai/images/favicon.png
