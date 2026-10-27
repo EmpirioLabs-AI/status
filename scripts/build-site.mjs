@@ -1490,8 +1490,9 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
     if(!grid) return;
 
     /* The model list is collapsed by default: over 200 tiles is longer than the rest of
-       the page together. The toggle opens itself when the live fetch reports a model down,
-       so a customer never has to expand a list to find the one model that is failing. */
+       the page together. It stays collapsed while a model is down; a model that is down
+       moves to the top of the list instead (orderTiles), so a customer sees it without
+       expanding anything. */
     var collapse = document.getElementById('workersCollapse');
     var toggle = document.getElementById('workersToggle');
     function syncToggle(){
@@ -1504,11 +1505,6 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       // disagree on the same card read as a bug.
       toggle.textContent = open ? 'Show fewer models' : 'Show all models';
       toggle.setAttribute('aria-expanded', open ? 'true' : 'false');
-    }
-    function expandForProblems(downCount){
-      if(!collapse || !downCount) return;
-      collapse.classList.remove('is-collapsed');
-      syncToggle();
     }
     if(toggle && collapse){
       toggle.addEventListener('click', function(){
@@ -1691,6 +1687,29 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       cacheTile(tile);
     }
 
+    // Down models first, then the rest, each in name order; a model that recovers goes
+    // back to its place. The grid is rewritten only when that order changes.
+    function orderTiles(){
+      var tiles = grid.querySelectorAll('.worker-tile');
+      var down = [], rest = [];
+      for(var i = 0; i < tiles.length; i++){
+        var row = tileParts(tiles[i]).row;
+        (row && row.classList.contains('down') ? down : rest).push(tiles[i]);
+      }
+      function byName(a, b){
+        return (a.getAttribute('data-worker') || '').localeCompare(b.getAttribute('data-worker') || '');
+      }
+      var want = down.sort(byName).concat(rest.sort(byName));
+      for(var j = 0; j < want.length; j++){
+        if(want[j] !== tiles[j]){
+          var frag = document.createDocumentFragment();
+          for(var k = 0; k < want.length; k++) frag.appendChild(want[k]);
+          grid.appendChild(frag);
+          return;
+        }
+      }
+    }
+
     // Fan out a /health worker entry into one (key, w) pair per
     // logical model. Mirrors the server-side record-models.mjs logic
     // so the live JS update doesn't add stale "inworld-tts"-style
@@ -1762,8 +1781,8 @@ ${sw.appleTouchIcon ? `<link rel="apple-touch-icon" href="${escapeHtml(sw.appleT
       var total = data.models_total || data.workers_total || (up + down);
       var n = function(id, v){ var el = document.getElementById(id); if(el) el.textContent = v; };
       n('wmUp', up); n('wmDown', down); n('wmTotal', total);
+      orderTiles();
       syncToggle();
-      expandForProblems(down);
       lastChecked = data.checked_at != null ? data.checked_at : Date.now();
       tickAge();
     }
