@@ -1,0 +1,44 @@
+name: Dependabot auto-merge
+# Dependabot's pull requests merge themselves. Nothing in this repository builds a
+# pull request, and every check runs on main within minutes of a merge, so a patch
+# or minor update (an action re-pinned to a newer commit, an npm patch) is merged
+# as soon as Dependabot opens or updates it. A major update stays open for a
+# person, because its changes to the workflows or the site build need reading.
+#
+# Only `gh` on the runner is used: no third-party action runs with this token.
+on:
+  pull_request:
+    types: [opened, reopened, synchronize]
+
+# Each job sets the token permissions it needs; anything else reads only.
+permissions:
+  contents: read
+
+jobs:
+  merge:
+    name: Merge a patch or minor update
+    if: github.event.pull_request.user.login == 'dependabot[bot]' && github.repository == 'EmpirioLabs-AI/status'
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: write
+      pull-requests: write
+    steps:
+      - name: Merge unless the update is a major version
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_URL: ${{ github.event.pull_request.html_url }}
+          TITLE: ${{ github.event.pull_request.title }}
+        run: |
+          set -euo pipefail
+          # Dependabot's title: "Bump <name> from <old> to <new>" (a leading "v" optional).
+          range=$(printf '%s' "$TITLE" | sed -nE 's/^Bump .+ from v?([0-9]+)[^ ]* to v?([0-9]+)[^ ]*$/\1 \2/p')
+          if [ -z "$range" ]; then
+            echo "Not a single-dependency version bump; left open for review."
+            exit 0
+          fi
+          set -- $range
+          if [ "$1" != "$2" ]; then
+            echo "Major update ($1 to $2); left open for review."
+            exit 0
+          fi
+          gh pr merge --squash --delete-branch "$PR_URL"
