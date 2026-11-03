@@ -1,15 +1,15 @@
 {
   "version": 1,
-  "updated_at": 1793731726,
+  "updated_at": 1793732039,
   "sites": {
     "agents": {
       "name": "Hosted Agents",
       "url": "https://api.empiriolabs.ai/v1/hosted-agents/health",
       "first_seen": 1780222575,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 278,
+      "last_latency_ms": 558,
       "last_error": null,
       "buckets": {
         "2026-08-06": {
@@ -636,11 +636,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 326666,
-          "lat_count": 908
+          "lat_sum": 328298,
+          "lat_count": 912
         }
       }
     },
@@ -648,10 +648,10 @@
       "name": "API Gateway",
       "url": "https://api.empiriolabs.ai/readyz",
       "first_seen": 1776954273,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 265,
+      "last_latency_ms": 475,
       "last_error": null,
       "buckets": {
         "2026-08-06": {
@@ -1278,11 +1278,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 255303,
-          "lat_count": 908
+          "lat_sum": 256539,
+          "lat_count": 912
         }
       }
     },
@@ -1290,10 +1290,10 @@
       "name": "Dashboard",
       "url": "https://platform.empiriolabs.ai/auth/login",
       "first_seen": 1791942653,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 664,
+      "last_latency_ms": 757,
       "last_error": null,
       "buckets": {
         "2026-10-14": {
@@ -1437,11 +1437,11 @@
           "lat_count": 1162
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 535322,
-          "lat_count": 908
+          "lat_sum": 537463,
+          "lat_count": 912
         }
       }
     },
@@ -1449,10 +1449,10 @@
       "name": "Documentation",
       "url": "https://docs.empiriolabs.ai",
       "first_seen": 1776954273,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 952,
+      "last_latency_ms": 1245,
       "last_error": null,
       "buckets": {
         "2026-08-06": {
@@ -2079,11 +2079,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 1024398,
-          "lat_count": 908
+          "lat_sum": 1029030,
+          "lat_count": 912
         }
       }
     },
@@ -2091,10 +2091,10 @@
       "name": "GPU Cloud",
       "url": "https://api.empiriolabs.ai/v1/gpu/catalog",
       "first_seen": 1780220775,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 288,
+      "last_latency_ms": 540,
       "last_error": null,
       "buckets": {
         "2026-08-06": {
@@ -2721,11 +2721,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 317116,
-          "lat_count": 908
+          "lat_sum": 318674,
+          "lat_count": 912
         }
       }
     },
@@ -2733,10 +2733,10 @@
       "name": "MCP Server",
       "url": "https://mcp.empiriolabs.ai/livez",
       "first_seen": 1791942653,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 559,
+      "last_latency_ms": 746,
       "last_error": null,
       "buckets": {
         "2026-10-14": {
@@ -2880,11 +2880,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 526360,
-          "lat_count": 908
+          "lat_sum": 528580,
+          "lat_count": 912
         }
       }
     },
@@ -2892,10 +2892,10 @@
       "name": "Media Delivery",
       "url": "https://media.empiriolabs.ai/assets/empirio-og-logo.png",
       "first_seen": 1792020422,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 528,
+      "last_latency_ms": 659,
       "last_error": null,
       "buckets": {
         "2026-10-14": {
@@ -3039,11 +3039,11 @@
           "lat_count": 1163
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 597599,
-          "lat_count": 908
+          "lat_sum": 599662,
+          "lat_count": 912
         }
       }
     },
@@ -3051,10 +3051,10 @@
       "name": "Models",
       "url": "https://api.empiriolabs.ai/health",
       "first_seen": 1776954273,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 408,
+      "last_latency_ms": 611,
       "last_error": null,
       "buckets": {
         "2026-08-06": {
@@ -3681,11 +3681,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 344445,
-          "lat_count": 908
+          "lat_sum": 346149,
+          "lat_count": 912
         }
       }
     },
@@ -3693,10 +3693,10 @@
       "name": "Website",
       "url": "https://empiriolabs.ai",
       "first_seen": 1776954273,
-      "last_seen": 1793731726,
+      "last_seen": 1793732039,
       "last_status": "up",
       "last_code": 200,
-      "last_latency_ms": 99,
+      "last_latency_ms": 208,
       "last_error": null,
       "buckets": {
         "2026-08-06": {
@@ -4323,11 +4323,11 @@
           "lat_count": 1164
         },
         "2026-11-03": {
-          "checks": 908,
-          "up": 908,
+          "checks": 912,
+          "up": 912,
           "down": 0,
-          "lat_sum": 271438,
-          "lat_count": 908
+          "lat_sum": 272474,
+          "lat_count": 912
         }
       }
     }
