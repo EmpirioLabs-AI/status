@@ -50,7 +50,7 @@ jobs:
           auth=$(printf 'x-access-token:%s' "$PUSH_TOKEN" | base64 -w0)
           echo "::add-mask::$auth"
           git config --local http.https://github.com/.extraheader "AUTHORIZATION: basic $auth"
-      - uses: upptime/uptime-monitor@fefca90fa2ccfc66ca39a11f40dcc90236da05ac # v1.46.4
+      - uses: upptime/uptime-monitor@74f0683383384927e064d76a5f21f340d6af36fc # v1.46.5
         with:
           command: "update"
         env:
