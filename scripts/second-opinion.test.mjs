@@ -1,13 +1,13 @@
-// node --test scripts/
-// No network: the probe network and the direct check are replaced by fakes.
+// npm test
+// No network: both probe networks and the direct check are replaced by fakes.
 import test from "node:test";
 import assert from "node:assert/strict";
-import { confirmDown, judge, measurementFor, secondOpinion } from "./second-opinion.mjs";
+import { classify, confirmDown, measurementFor, secondOpinion, verdictOf } from "./second-opinion.mjs";
 
-const answered = (statusCode, rawBody = "") => ({ result: { status: "finished", statusCode, rawBody } });
-const unreachable = () => ({ result: { status: "failed", statusCode: null } });
-const pending = () => ({ result: { status: "in-progress" } });
 const READY = { expectedStatusCodes: [200], requireText: '"status":"ok"' };
+const pass = (code = 200) => ({ state: "pass", code });
+const fail = () => ({ state: "fail", code: null });
+const turnedAway = () => ({ state: "inconclusive", code: 403 });
 
 test("the measurement carries the host, port, path and query of the URL", () => {
   const m = measurementFor("https://api.example.com/readyz?since=1700000000");
@@ -24,39 +24,48 @@ test("the measurement carries the host, port, path and query of the URL", () => 
   assert.deepEqual(plain.measurementOptions.request, { method: "GET", path: "/" });
 });
 
+test("what one probe saw", () => {
+  assert.equal(classify(200, '{"status":"ok"}', READY), "pass");
+  // The right code without the body marker is the endpoint answering wrongly.
+  assert.equal(classify(200, "<html>", READY), "fail");
+  // A probe that cannot show the body is judged on the code.
+  assert.equal(classify(200, undefined, READY), "pass");
+  assert.equal(classify(307, undefined, { expectedStatusCodes: [200] }), "pass");
+  assert.equal(classify(null, undefined, READY), "fail");
+  assert.equal(classify(503, '{"status":"degraded"}', READY), "fail");
+  // Turned away: says nothing about the endpoint for everyone else.
+  assert.equal(classify(403, undefined, READY), "inconclusive");
+  assert.equal(classify(429, undefined, READY), "inconclusive");
+});
+
 test("one network getting the expected answer is enough for up", () => {
-  const verdict = judge([unreachable(), answered(200, '{"status":"ok"}'), unreachable()], READY);
+  const verdict = verdictOf([fail(), pass(200), fail()]);
   assert.equal(verdict.verdict, "up");
   assert.equal(verdict.code, 200);
+  // Even before the others have reported.
+  assert.equal(verdictOf([pass(200)], false).verdict, "up");
 });
 
-test("a redirect shows the endpoint answering", () => {
-  assert.equal(judge([answered(307), answered(307)], { expectedStatusCodes: [200] }).verdict, "up");
-});
-
-test("down needs every network to have reported, and none to pass", () => {
-  assert.equal(judge([unreachable(), unreachable(), unreachable()], READY).verdict, "down");
-  assert.equal(judge([answered(503, '{"status":"degraded"}'), unreachable()], READY).verdict, "down");
-  // The right code without the body marker is not a pass.
-  assert.equal(judge([answered(200, "<html>"), answered(200, "<html>")], READY).verdict, "down");
+test("down needs every probe to have reported, and at least two to fail", () => {
+  assert.equal(verdictOf([fail(), fail(), fail()]).verdict, "down");
+  assert.equal(verdictOf([fail(), fail(), turnedAway()]).verdict, "down");
 });
 
 test("too little evidence is unknown, never down", () => {
-  assert.equal(judge([unreachable()], READY).verdict, "unknown");
-  assert.equal(judge([], READY).verdict, "unknown");
-  assert.equal(judge([unreachable(), unreachable(), pending()], READY, false).verdict, "unknown");
-  assert.equal(judge(null, READY).verdict, "unknown");
+  assert.equal(verdictOf([fail()]).verdict, "unknown");
+  assert.equal(verdictOf([]).verdict, "unknown");
+  assert.equal(verdictOf([fail(), fail()], false).verdict, "unknown");
+  assert.equal(verdictOf([turnedAway(), turnedAway(), turnedAway()]).verdict, "unknown");
+  assert.equal(verdictOf([fail(), turnedAway(), turnedAway()]).verdict, "unknown");
 });
 
-test("an answer that arrived before time ran out still counts as up", () => {
-  assert.equal(judge([answered(200, '{"status":"ok"}'), pending()], READY, false).verdict, "up");
-});
-
-function fakeNetwork(steps) {
-  const calls = [];
-  const fetchImpl = async (url, init = {}) => {
-    calls.push({ url, method: init.method || "GET" });
-    const step = steps.shift();
+// A fake internet: each probe network answers from its own list of replies.
+function fakeNetworks({ first = [], second = [] }) {
+  const calls = { first: 0, second: 0 };
+  const fetchImpl = async (url) => {
+    const which = String(url).includes("check-host.net") ? "second" : "first";
+    calls[which] += 1;
+    const step = (which === "first" ? first : second).shift();
     if (!step) throw new Error("no more answers");
     if (step.throws) throw step.throws;
     return { status: step.status, json: async () => step.body };
@@ -65,26 +74,59 @@ function fakeNetwork(steps) {
 }
 
 const quick = { sleep: async () => {} };
+const gpFinished = (...results) => ({ status: 200, body: { status: "finished", results } });
+const gpProbe = (statusCode, rawBody = "") => ({ result: { status: "finished", statusCode, rawBody } });
+const gpDead = () => ({ result: { status: "failed", statusCode: null } });
+const chCreated = {
+  status: 200,
+  body: { ok: 1, request_id: "r1", nodes: { "us1.node.check-host.net": [], "us5.node.check-host.net": [], "de4.node.check-host.net": [] } },
+};
+const chResult = (a, b, c) => ({
+  status: 200,
+  body: { "us1.node.check-host.net": a, "us5.node.check-host.net": b, "de4.node.check-host.net": c },
+});
+const chOk = [[1, 0.2, "OK", "200", "203.0.113.1"]];
+const chDead = [[0, 3.0, "Connection timed out", null, null]];
 
-test("asking the probe network: created, polled, judged", async () => {
-  const net = fakeNetwork([
-    { status: 202, body: { id: "abc" } },
-    { status: 200, body: { status: "in-progress", results: [pending()] } },
-    { status: 200, body: { status: "finished", results: [answered(200, '{"status":"ok"}'), unreachable()] } },
-  ]);
+test("the first network answers: the second is not asked", async () => {
+  const net = fakeNetworks({
+    first: [{ status: 202, body: { id: "abc" } }, gpFinished(gpProbe(200, '{"status":"ok"}'), gpDead())],
+  });
   const out = await secondOpinion("https://api.example.com/readyz", READY, { ...quick, fetchImpl: net.fetchImpl });
   assert.equal(out.verdict, "up");
-  assert.equal(net.calls[0].method, "POST");
-  assert.match(net.calls[1].url, /\/abc$/);
+  assert.equal(net.calls.second, 0);
 });
 
-test("a refused or failing probe network is unknown", async () => {
-  const limited = fakeNetwork([{ status: 429, body: { error: {} } }]);
+test("the first network confirms a down", async () => {
+  const net = fakeNetworks({
+    first: [{ status: 202, body: { id: "abc" } }, gpFinished(gpDead(), gpDead(), gpDead())],
+  });
+  const out = await secondOpinion("https://api.example.com/readyz", READY, { ...quick, fetchImpl: net.fetchImpl });
+  assert.equal(out.verdict, "down");
+  assert.equal(net.calls.second, 0);
+});
+
+test("the first network cannot be asked: the second decides", async () => {
+  const up = fakeNetworks({ first: [{ status: 429, body: {} }], second: [chCreated, chResult(chOk, chDead, null)] });
   assert.equal(
-    (await secondOpinion("https://api.example.com/", {}, { ...quick, fetchImpl: limited.fetchImpl })).verdict,
-    "unknown"
+    (await secondOpinion("https://api.example.com/", {}, { ...quick, fetchImpl: up.fetchImpl })).verdict,
+    "up"
   );
-  const broken = fakeNetwork([{ throws: new Error("offline") }]);
+  const down = fakeNetworks({
+    first: [{ throws: new Error("offline") }],
+    second: [chCreated, chResult(chDead, null, null), chResult(chDead, chDead, chDead)],
+  });
+  assert.equal(
+    (await secondOpinion("https://api.example.com/", {}, { ...quick, fetchImpl: down.fetchImpl })).verdict,
+    "down"
+  );
+});
+
+test("nobody can be asked: unknown", async () => {
+  const net = fakeNetworks({ first: [{ status: 429, body: {} }], second: [{ status: 503, body: null }] });
+  const out = await secondOpinion("https://api.example.com/", {}, { ...quick, fetchImpl: net.fetchImpl });
+  assert.equal(out.verdict, "unknown");
+  const broken = fakeNetworks({ first: [{ throws: new Error("offline") }], second: [{ throws: new Error("offline") }] });
   assert.equal(
     (await secondOpinion("https://api.example.com/", {}, { ...quick, fetchImpl: broken.fetchImpl })).verdict,
     "unknown"
@@ -93,11 +135,14 @@ test("a refused or failing probe network is unknown", async () => {
 
 test("a measurement that never finishes is unknown", async () => {
   let clock = 0;
-  const net = fakeNetwork(
-    [{ status: 202, body: { id: "slow" } }].concat(
-      Array.from({ length: 50 }, () => ({ status: 200, body: { status: "in-progress", results: [pending(), pending()] } }))
-    )
-  );
+  const pendingForever = Array.from({ length: 60 }, () => ({
+    status: 200,
+    body: { status: "in-progress", results: [{ result: { status: "in-progress" } }] },
+  }));
+  const net = fakeNetworks({
+    first: [{ status: 202, body: { id: "slow" } }, ...pendingForever],
+    second: [{ status: 500, body: null }],
+  });
   const out = await secondOpinion("https://api.example.com/", {}, {
     fetchImpl: net.fetchImpl,
     sleep: async (ms) => {
@@ -112,6 +157,7 @@ const SITE = { name: "Example", url: "https://example.com/health", expectedStatu
 const never = async () => {
   throw new Error("must not be asked");
 };
+const noConnection = async () => ({ answered: false, ok: false, code: 0 });
 
 test("a recorded HTTP code is the endpoint's own answer: confirmed without asking anyone", async () => {
   const out = await confirmDown(SITE, 503, { directCheck: never, secondOpinion: never });
@@ -134,8 +180,7 @@ test("a connection failure that became an error answer is confirmed", async () =
   assert.equal(out.confirmed, true);
 });
 
-test("still no connection from here: other networks decide", async () => {
-  const noConnection = async () => ({ answered: false, ok: false, code: 0 });
+test("still no connection from here: only other networks can confirm it", async () => {
   const reached = await confirmDown(SITE, 0, {
     directCheck: noConnection,
     secondOpinion: async () => ({ verdict: "up", code: 200, detail: "2 of 3" }),
@@ -146,10 +191,12 @@ test("still no connection from here: other networks decide", async () => {
     secondOpinion: async () => ({ verdict: "down", code: 0, detail: "0 of 3" }),
   });
   assert.equal(unreached.confirmed, true);
-  // Nobody to ask: the down stands, as it did before the second check existed.
+});
+
+test("nobody to ask is never a confirmation", async () => {
   const nobody = await confirmDown(SITE, 0, {
     directCheck: noConnection,
     secondOpinion: async () => ({ verdict: "unknown", code: 0, detail: "rate limit" }),
   });
-  assert.equal(nobody.confirmed, true);
+  assert.equal(nobody.confirmed, false);
 });
