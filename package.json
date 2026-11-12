@@ -5,7 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "node scripts/build-site.mjs"
+    "build": "node scripts/build-site.mjs",
+    "test": "node --test"
   },
   "dependencies": {
     "js-yaml": "^4.1.0"

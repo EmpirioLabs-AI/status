@@ -1,32 +1,31 @@
 #!/usr/bin/env node
 // scripts/reconcile-incidents.mjs
-// Keeps Upptime's auto-opened incident issues in a state Upptime can actually
-// find again, and makes sure a human is notified when one opens.
+// Opens, labels, assigns and closes the incident issue of each site, from the
+// status Upptime recorded in history/<slug>.yml.
 //
-// Why this exists
-// ---------------
-// Upptime looks up the open incident for a site by its SLUG label:
-//
-//   update.ts: octokit.issues.listForRepo({ labels: slug, state: "open" })
-//
-// and it passes `labels: ["status", slug]` when it creates the issue. Here
-// those labels and assignees do not always land. Without the slug label:
-//
-//   1. The lookup returns nothing, so every down check opens ANOTHER duplicate
-//      instead of reusing the open one.
-//   2. The lookup returns nothing on recovery too, so the "site came back up"
-//      branch never runs and the incident stays open.
-//
-// This script runs with the workflow's own GITHUB_TOKEN, so the labels and
-// assignees it applies stick. Once an open
-// incident carries its slug label, Upptime finds it again and its normal
-// open/close lifecycle resumes unaided.
+// Why incidents are opened here
+// -----------------------------
+// Upptime records a site as down when its own runner cannot connect to it,
+// and that is sometimes the runner's network and not the site (2026-11-12: a
+// runner timed out against two unrelated hosts for five minutes while both
+// answered everyone else, and an incident opened for an outage that never
+// happened). Upptime's token therefore cannot open issues any more (see
+// .github/workflows/uptime.yml). This script opens the incident, and only once
+// the down is confirmed: the site answered with an error, or it still cannot
+// be reached from here and other networks cannot reach it either
+// (scripts/second-opinion.mjs). A down that is not confirmed opens nothing and
+// notifies nobody; the next check settles it.
 //
 // Notification
 // ------------
-// GitHub does not notify an author about their own activity, so assigning the
-// issue from github-actions[bot] is what reaches the assignee: the assignees
-// from .upptimerc.yml are applied here rather than left to Upptime.
+// Assigning the issue is what reaches a person: the assignees from
+// .upptimerc.yml are applied here.
+//
+// Older incidents
+// ---------------
+// An incident that something else opened is still picked up by its title: it
+// gets its slug label, and assignees once it is confirmed, and duplicates are
+// closed.
 //
 // The "status" label is deliberately NOT applied. build-site.mjs publishes
 // every issue carrying it as a curated public incident on the status page
@@ -40,6 +39,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { confirmDown } from "./second-opinion.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -51,9 +51,9 @@ const TOKEN = process.env.GITHUB_TOKEN || process.env.GH_TOKEN || "";
 const API = process.env.GITHUB_API_URL || "https://api.github.com";
 const LABEL_COLOR = "ededed";
 
-// Upptime titles its auto-opened issues "<emoji> <name> is down" and
-// "<emoji> <name> has degraded performance". The emoji is configurable, so
-// match on the name and suffix instead of the prefix.
+// Incidents are titled the way Upptime titles them, "<emoji> <name> is down"
+// and "<emoji> <name> has degraded performance", so one it opened in the past
+// is matched too. Match on the name and suffix, not the emoji.
 const DOWN_SUFFIX = " is down";
 const DEGRADED_SUFFIX = " has degraded performance";
 
@@ -69,11 +69,14 @@ function loadConfig() {
 }
 
 // History files carry a trailing comment block after the YAML document.
-function loadSiteStatus(slug) {
+// Returns the recorded status and the HTTP code that check saw (0: it could
+// not connect).
+function loadSiteHistory(slug) {
   const file = join(HISTORY_DIR, `${slug}.yml`);
   if (!existsSync(file)) return null;
   const doc = yaml.loadAll(readFileSync(file, "utf8"))[0];
-  return doc && typeof doc.status === "string" ? doc.status : null;
+  if (!doc || typeof doc.status !== "string") return null;
+  return { status: doc.status, code: Number(doc.code) || 0 };
 }
 
 async function api(method, path, body) {
@@ -162,6 +165,34 @@ async function applyLabel(owner, repo, number, label) {
   }
 }
 
+// Opens the incident for a confirmed down, already labelled and assigned.
+async function openIncident(owner, repo, site, slug, history, assignees) {
+  const degraded = history.status === "degraded";
+  const title = degraded
+    ? `\u26a0\ufe0f ${site.name}${DEGRADED_SUFFIX}`
+    : `\u{1f6d1} ${site.name}${DOWN_SUFFIX}`;
+  const body = [
+    `${site.name} (${site.url}) ${degraded ? "is answering slowly" : "is not passing its check"}.`,
+    "",
+    history.code ? `- HTTP code: ${history.code}` : "- No connection",
+    "",
+  ].join("\n");
+  if (DRY_RUN) {
+    console.log(`[reconcile] would open "${title}" for ${slug}`);
+    return null;
+  }
+  const { status, data } = await api("POST", `/repos/${owner}/${repo}/issues`, {
+    title,
+    body,
+    labels: [slug],
+    assignees,
+  });
+  if (status !== 201 || !data) {
+    throw new Error(`opening the incident for ${slug} failed with HTTP ${status}`);
+  }
+  return data.number;
+}
+
 async function applyAssignees(owner, repo, number, assignees) {
   if (!assignees.length || DRY_RUN) return;
   const { status } = await api("POST", `/repos/${owner}/${repo}/issues/${number}/assignees`, {
@@ -188,14 +219,16 @@ async function main() {
 
   let closed = 0;
   let labelled = 0;
+  let opened = 0;
 
   for (const site of sites) {
     const slug = site.slug || slugify(site.name);
-    const status = loadSiteStatus(slug);
-    if (status === null) {
+    const history = loadSiteHistory(slug);
+    if (history === null) {
       console.log(`[reconcile] ${slug}: no history file yet, skipping`);
       continue;
     }
+    const status = history.status;
 
     // Newest first, so the survivor of a duplicate set is the most recent one.
     const incidents = issues
@@ -207,7 +240,23 @@ async function main() {
       .sort((a, b) => b.number - a.number);
 
     if (!incidents.length) {
-      console.log(`[reconcile] ${slug}: ${status}, no open incident`);
+      if (status === "up") {
+        console.log(`[reconcile] ${slug}: up, no open incident`);
+        continue;
+      }
+      // Recorded as failing and nothing open yet: open the incident, but only
+      // for a down that is confirmed.
+      const check = await confirmDown(site, history.code);
+      if (!check.confirmed) {
+        console.log(`[reconcile] ${slug}: ${status} on record, not confirmed (${check.why}); nothing opened`);
+        continue;
+      }
+      await ensureLabel(owner, repo, slug);
+      const number = await openIncident(owner, repo, site, slug, history, assignees);
+      if (number) {
+        opened += 1;
+        console.log(`[reconcile] ${slug}: opened #${number} (${check.why}), assigned to ${assignees.join(", ")}`);
+      }
       continue;
     }
 
@@ -235,8 +284,14 @@ async function main() {
       console.log(`[reconcile] ${slug}: labelled #${survivor.number}`);
     }
     if (!survivor.assignees.length) {
-      await applyAssignees(owner, repo, survivor.number, assignees);
-      console.log(`[reconcile] ${slug}: assigned #${survivor.number} to ${assignees.join(", ")}`);
+      // Assigning is what notifies a person, so it waits for confirmation.
+      const check = await confirmDown(site, history.code);
+      if (check.confirmed) {
+        await applyAssignees(owner, repo, survivor.number, assignees);
+        console.log(`[reconcile] ${slug}: assigned #${survivor.number} to ${assignees.join(", ")} (${check.why})`);
+      } else {
+        console.log(`[reconcile] ${slug}: #${survivor.number} not confirmed (${check.why}); nobody assigned`);
+      }
     }
 
     for (const issue of duplicates) {
@@ -249,7 +304,7 @@ async function main() {
   }
 
   console.log(
-    `[reconcile] done${DRY_RUN ? " (dry run)" : ""}: ${closed} closed, ${labelled} labelled`
+    `[reconcile] done${DRY_RUN ? " (dry run)" : ""}: ${opened} opened, ${closed} closed, ${labelled} labelled`
   );
 }
 

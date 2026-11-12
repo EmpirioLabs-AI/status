@@ -15,13 +15,17 @@ permissions:
   contents: read
 
 jobs:
-  release:
+  monitor:
     name: Check status of all endpoints
     runs-on: ubuntu-22.04
     timeout-minutes: 10
     permissions:
       contents: write
-      issues: write
+      # Read only, on purpose. The monitor records what it sees, but it cannot
+      # open an incident: a check that fails only because this runner cannot
+      # connect must not notify anyone. The next job opens incidents, after
+      # confirming them (scripts/reconcile-incidents.mjs).
+      issues: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -39,8 +43,6 @@ jobs:
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
         with:
           node-version: "22"
-      - name: Install dependencies
-        run: npm ci --ignore-scripts --no-audit --no-fund
       # uptime-monitor pushes its commit with a plain `git push`, so the push
       # token goes into the git config for that step only.
       - name: Let uptime-monitor push
@@ -54,12 +56,39 @@ jobs:
         with:
           command: "update"
         env:
-          GH_PAT: ${{ secrets.GH_PAT || github.token }}
+          # This job's own token, which reads issues but cannot open one.
+          GH_PAT: ${{ github.token }}
         continue-on-error: true
       - name: Remove the push token
         if: always()
         run: git config --local --unset-all http.https://github.com/.extraheader || true
-      # Runs with github.token so the labels and assignees it sets stick.
+
+  release:
+    name: Record samples and reconcile incidents
+    # On a second runner, and whatever the monitor job did: an incident is
+    # confirmed from here, and the samples must not depend on that job.
+    needs: monitor
+    if: always()
+    runs-on: ubuntu-22.04
+    timeout-minutes: 10
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          # The tip of main, which now holds what the monitor job recorded.
+          ref: main
+          fetch-depth: 1
+          # No token stays in .git/config: the push below gets it for its own
+          # step only.
+          persist-credentials: false
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: "22"
+      - name: Install dependencies
+        run: npm ci --ignore-scripts --no-audit --no-fund
+      # Opens an incident only once it is confirmed, and assigns it.
       # See scripts/reconcile-incidents.mjs.
       - name: Reconcile incident issues
         if: always()
