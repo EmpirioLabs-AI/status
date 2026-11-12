@@ -45,6 +45,7 @@ import { readFileSync, writeFileSync, existsSync, mkdirSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import yaml from "js-yaml";
+import { secondOpinion } from "./second-opinion.mjs";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 const ROOT = join(__dirname, "..");
@@ -63,6 +64,15 @@ const SAMPLE_INTERVAL_SECONDS = Math.max(
 // A failed probe is tried once more after this delay before it counts as down,
 // so a dropped connection on the runner is not recorded as an outage.
 const RETRY_DELAY_SECONDS = Math.max(0, Number(process.env.RETRY_DELAY_SECONDS || 5));
+// A probe that got no HTTP answer at all (DNS, connect, TLS, timeout) may be
+// this runner's network and not the site, so other networks are asked before
+// it counts (scripts/second-opinion.mjs). A run asks at most this many times;
+// past that, and whenever they cannot be asked, the probe's own result stands.
+const SECOND_OPINION = process.env.SECOND_OPINION !== "0";
+const SECOND_OPINION_MAX_PER_RUN = Math.max(0, Number(process.env.SECOND_OPINION_MAX_PER_RUN || 24));
+let secondOpinionsAsked = 0;
+// One question per URL per round: rows that share a URL share its answer.
+const roundOpinions = new Map();
 
 function slugify(name) {
   return String(name)
@@ -229,7 +239,8 @@ function recordSample(state, slug, site, result, nowUnix) {
   entry.last_seen = nowUnix;
   entry.last_status = result.status;
   entry.last_code = result.code;
-  entry.last_latency_ms = result.latency_ms;
+  // A sample decided by other networks has no latency of its own.
+  if (Number.isFinite(result.latency_ms)) entry.last_latency_ms = result.latency_ms;
   entry.last_error = result.error;
 
   const day = utcDay(nowUnix);
@@ -256,11 +267,40 @@ function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+function askOtherNetworks(site, url) {
+  if (!SECOND_OPINION) return Promise.resolve({ verdict: "unknown", code: 0, detail: "switched off" });
+  if (!roundOpinions.has(url)) {
+    if (secondOpinionsAsked >= SECOND_OPINION_MAX_PER_RUN) {
+      return Promise.resolve({ verdict: "unknown", code: 0, detail: "this run has asked enough" });
+    }
+    secondOpinionsAsked += 1;
+    roundOpinions.set(
+      url,
+      secondOpinion(url, {
+        expectedStatusCodes: site.expectedStatusCodes,
+        requireText: site.__dangerous__body_down_if_text_missing || null,
+      })
+    );
+  }
+  return roundOpinions.get(url);
+}
+
 async function probeWithRetry(site, url) {
   let result = await probe(site, url);
   if (result.status === "down" && RETRY_DELAY_SECONDS > 0) {
     await sleep(RETRY_DELAY_SECONDS * 1000);
     result = await probe(site, url);
+  }
+  // No HTTP answer at all: this runner could not connect. That is only an
+  // outage if other networks cannot connect either.
+  if (result.status === "down" && result.code === 0) {
+    const opinion = await askOtherNetworks(site, url);
+    console.log(
+      `[record-sites] ${url}: no connection from this runner (${result.error}); second check: ${opinion.verdict} (${opinion.detail})`
+    );
+    if (opinion.verdict === "up") {
+      return { status: "up", code: opinion.code || 200, latency_ms: null, error: null };
+    }
   }
   return result;
 }
@@ -304,11 +344,14 @@ async function main() {
 
   for (let i = 0; i < SAMPLES_PER_RUN; i++) {
     const sampleUnix = Math.floor(Date.now() / 1000);
+    roundOpinions.clear();
     const results = await probeRound(sites, state);
     for (const { slug, site, result } of results) {
       recordSample(state, slug, site, result, sampleUnix);
       console.log(
-        `[record-sites] sample ${i + 1}/${SAMPLES_PER_RUN} ${slug}: ${result.status} (code=${result.code}, latency=${result.latency_ms}ms)${
+        `[record-sites] sample ${i + 1}/${SAMPLES_PER_RUN} ${slug}: ${result.status} (code=${result.code}, latency=${
+          Number.isFinite(result.latency_ms) ? `${result.latency_ms}ms` : "n/a"
+        })${
           result.error ? ` err="${result.error}"` : ""
         }`
       );

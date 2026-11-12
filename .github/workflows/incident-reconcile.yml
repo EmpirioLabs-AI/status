@@ -1,5 +1,6 @@
 name: Incident Reconcile CI
-# Keeps Upptime's auto-opened incidents labelled, assigned and closed.
+# Opens an incident once it is confirmed, and keeps incidents labelled,
+# assigned and closed.
 #
 # This runs on its own schedule rather than only as a step inside Uptime CI,
 # because Uptime CI is frequently cancelled: its concurrency group keeps at
@@ -37,8 +38,8 @@ jobs:
           node-version: "22"
       - name: Install dependencies
         run: npm ci --ignore-scripts --no-audit --no-fund
-      # github.token deliberately, not GH_PAT: the PAT can open an issue but
-      # cannot set labels or assignees on it, which is the whole bug.
+      # github.token deliberately, not GH_PAT: the labels and assignees it sets
+      # stick.
       - name: Reconcile
         env:
           GITHUB_TOKEN: ${{ github.token }}

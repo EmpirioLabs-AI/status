@@ -480,7 +480,18 @@ function buildSitePayload(config) {
     const slug = s.slug || slugify(s.name);
     const stateEntry = sitesState && sitesState.sites[slug];
     const current = readHistoryFile(slug);
-    const history = getHistory(slug, HISTORY_DAYS);
+    // A point where the check could not connect at all (no HTTP code) may be
+    // the checking runner's own network. Since 2026-11-12 it counts only on a
+    // day when the recorder, which asks other networks before it records a
+    // down, also saw the site down. A point with an HTTP code is the site's
+    // own answer and always counts, and older points stay as recorded.
+    const recordedDown = (ymd) =>
+      ((stateEntry && stateEntry.buckets && stateEntry.buckets[ymd]) || {}).down || 0;
+    const history = getHistory(slug, HISTORY_DAYS).filter((p) => {
+      const ymd = p.date.slice(0, 10);
+      if (!stateEntry || p.status === "up" || p.code || ymd < "2026-11-12") return true;
+      return recordedDown(ymd) > 0;
+    });
     const legacyBuckets = bucketByDay(history, HISTORY_DAYS);
 
     let status, code, responseTime, lastUpdated, buckets;
