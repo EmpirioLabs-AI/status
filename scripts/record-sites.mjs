@@ -65,14 +65,25 @@ const SAMPLE_INTERVAL_SECONDS = Math.max(
 // so a dropped connection on the runner is not recorded as an outage.
 const RETRY_DELAY_SECONDS = Math.max(0, Number(process.env.RETRY_DELAY_SECONDS || 5));
 // A probe that got no HTTP answer at all (DNS, connect, TLS, timeout) may be
-// this runner's network and not the site, so other networks are asked before
-// it counts (scripts/second-opinion.mjs). A run asks at most this many times;
-// past that, and whenever they cannot be asked, the probe's own result stands.
+// this runner's network and not the site, so it counts as down only when other
+// networks cannot reach the site either (scripts/second-opinion.mjs). When
+// they cannot be asked, nothing is known and the sample is not recorded: a
+// runner's own failed connection is never an outage. A run asks at most this
+// many times; past that, a site already confirmed down in this run stays down
+// while this runner still cannot connect, and anything else is not recorded.
 const SECOND_OPINION = process.env.SECOND_OPINION !== "0";
 const SECOND_OPINION_MAX_PER_RUN = Math.max(0, Number(process.env.SECOND_OPINION_MAX_PER_RUN || 24));
 let secondOpinionsAsked = 0;
 // One question per URL per round: rows that share a URL share its answer.
 const roundOpinions = new Map();
+// URLs (without the `since` parameter) other networks confirmed down in this run.
+const confirmedDownThisRun = new Set();
+
+function withoutSince(url) {
+  const u = new URL(url);
+  u.searchParams.delete("since");
+  return u.toString();
+}
 
 function slugify(name) {
   return String(name)
@@ -270,8 +281,13 @@ function sleep(ms) {
 function askOtherNetworks(site, url) {
   if (!SECOND_OPINION) return Promise.resolve({ verdict: "unknown", code: 0, detail: "switched off" });
   if (!roundOpinions.has(url)) {
+    const key = withoutSince(url);
     if (secondOpinionsAsked >= SECOND_OPINION_MAX_PER_RUN) {
-      return Promise.resolve({ verdict: "unknown", code: 0, detail: "this run has asked enough" });
+      return Promise.resolve(
+        confirmedDownThisRun.has(key)
+          ? { verdict: "down", code: 0, detail: "confirmed down earlier in this run" }
+          : { verdict: "unknown", code: 0, detail: "this run has asked enough" }
+      );
     }
     secondOpinionsAsked += 1;
     roundOpinions.set(
@@ -279,6 +295,10 @@ function askOtherNetworks(site, url) {
       secondOpinion(url, {
         expectedStatusCodes: site.expectedStatusCodes,
         requireText: site.__dangerous__body_down_if_text_missing || null,
+      }).then((opinion) => {
+        if (opinion.verdict === "down") confirmedDownThisRun.add(key);
+        else if (opinion.verdict === "up") confirmedDownThisRun.delete(key);
+        return opinion;
       })
     );
   }
@@ -291,8 +311,9 @@ async function probeWithRetry(site, url) {
     await sleep(RETRY_DELAY_SECONDS * 1000);
     result = await probe(site, url);
   }
-  // No HTTP answer at all: this runner could not connect. That is only an
-  // outage if other networks cannot connect either.
+  // No HTTP answer at all: this runner could not connect. That is an outage
+  // only if other networks cannot connect either, and nothing at all if they
+  // cannot be asked.
   if (result.status === "down" && result.code === 0) {
     const opinion = await askOtherNetworks(site, url);
     console.log(
@@ -300,6 +321,9 @@ async function probeWithRetry(site, url) {
     );
     if (opinion.verdict === "up") {
       return { status: "up", code: opinion.code || 200, latency_ms: null, error: null };
+    }
+    if (opinion.verdict !== "down") {
+      return { status: "unknown", code: 0, latency_ms: null, error: result.error };
     }
   }
   return result;
@@ -318,9 +342,16 @@ async function probeRound(sites, state) {
           ? probeWithRetry(READY_SITE, probeUrl(site, since, site.readyUrl, "since"))
           : null,
       ]);
-      const result = main.status === "down" || !ready || ready.status === "up"
-        ? main
-        : { ...ready, latency_ms: main.latency_ms, error: `Readiness: ${ready.error}` };
+      // Down when either check is down. Unknown when either could not be
+      // judged and neither is down. Otherwise the main check's result.
+      let result = main;
+      if (main.status !== "down" && ready) {
+        if (ready.status === "down") {
+          result = { ...ready, latency_ms: main.latency_ms, error: `Readiness: ${ready.error}` };
+        } else if (ready.status === "unknown" && main.status === "up") {
+          result = ready;
+        }
+      }
       return { slug, site, result };
     })
   );
@@ -346,7 +377,16 @@ async function main() {
     const sampleUnix = Math.floor(Date.now() / 1000);
     roundOpinions.clear();
     const results = await probeRound(sites, state);
+    let recorded = 0;
     for (const { slug, site, result } of results) {
+      if (result.status === "unknown") {
+        // Nothing is known about this row from here, so nothing is recorded.
+        console.log(
+          `[record-sites] sample ${i + 1}/${SAMPLES_PER_RUN} ${slug}: not recorded (no connection from this runner, and no other network could tell)`
+        );
+        continue;
+      }
+      recorded += 1;
       recordSample(state, slug, site, result, sampleUnix);
       console.log(
         `[record-sites] sample ${i + 1}/${SAMPLES_PER_RUN} ${slug}: ${result.status} (code=${result.code}, latency=${
@@ -356,7 +396,7 @@ async function main() {
         }`
       );
     }
-    totalSamples += results.length;
+    totalSamples += recorded;
     state.updated_at = sampleUnix;
     if (i < SAMPLES_PER_RUN - 1) {
       await sleep(SAMPLE_INTERVAL_SECONDS * 1000);
