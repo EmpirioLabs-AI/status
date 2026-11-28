@@ -1,0 +1,78 @@
+{
+  "generatedAt": "2026-11-28T16:01:12.110Z",
+  "overall": "up",
+  "sites": [
+    {
+      "name": "Website",
+      "slug": "website",
+      "url": "https://empiriolabs.ai",
+      "status": "up",
+      "uptimePercent": 99.98743876397438,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "Documentation",
+      "slug": "documentation",
+      "url": "https://docs.empiriolabs.ai",
+      "status": "up",
+      "uptimePercent": 99.97330653518827,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "API Gateway",
+      "slug": "api",
+      "url": "https://api.empiriolabs.ai/readyz",
+      "status": "up",
+      "uptimePercent": 99.93249607535321,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "Models",
+      "slug": "models",
+      "url": "https://api.empiriolabs.ai/health",
+      "status": "up",
+      "uptimePercent": 99.97016706443914,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "GPU Cloud",
+      "slug": "gpu-cloud",
+      "url": "https://api.empiriolabs.ai/v1/gpu/catalog",
+      "status": "up",
+      "uptimePercent": 99.96702675543273,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "Hosted Agents",
+      "slug": "agents",
+      "url": "https://api.empiriolabs.ai/v1/hosted-agents/health",
+      "status": "up",
+      "uptimePercent": 99.97016706443914,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "Dashboard",
+      "slug": "dashboard",
+      "url": "https://platform.empiriolabs.ai/auth/login",
+      "status": "up",
+      "uptimePercent": 99.95099384482691,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "MCP Server",
+      "slug": "mcp",
+      "url": "https://mcp.empiriolabs.ai/livez",
+      "status": "up",
+      "uptimePercent": 99.96863544586674,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    },
+    {
+      "name": "Media Delivery",
+      "slug": "media-delivery",
+      "url": "https://media.empiriolabs.ai/assets/empirio-og-logo.png",
+      "status": "up",
+      "uptimePercent": 99.98423831665222,
+      "lastUpdated": "2026-11-28T15:58:36.000Z"
+    }
+  ]
+}
